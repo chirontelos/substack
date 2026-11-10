@@ -1,6 +1,7 @@
 /output/
 /output-*/
 *.log
+notes.md
 
 # Local secrets
 .env
