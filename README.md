@@ -2,7 +2,7 @@
 
 Download the posts of a Substack publication, store a clean offline copy of each article as HTML, and render them as PDFs.
 
-The tool was originally written for [onlylsc.substack.com](https://onlylsc.substack.com), but the publication URL can be changed with `--base-url`.
+The tool was originally written for [onlylsc.substack.com](https://onlylsc.substack.com), but the publication URL can be changed with `--base-url` / `--publication`.
 
 ## Features
 
@@ -62,7 +62,7 @@ bundle exec ruby substack_to_pdf.rb
 | Option | Description |
 | --- | --- |
 | `--output DIR` | Directory for generated HTML, PDFs, assets and the error log. Default: `./output`. |
-| `--base-url URL` | Publication base URL whose archive will be read. Default: `https://onlylsc.substack.com`. |
+| `--base-url URL`, `--publication URL` | Publication to scrape. Accepts the homepage or the `/archive` URL, with or without `https://`. Only the scheme, host and port are used. Default: `https://onlylsc.substack.com`. |
 | `--limit N` | Process only the first N posts from the selected archive results. |
 | `--only SLUG_OR_URL` | Process only the matching post. Repeat the option or separate values with commas to select several posts. |
 | `--force` | Overwrite existing HTML/PDF files. |
@@ -143,8 +143,20 @@ bundle exec ruby substack_to_pdf.rb --single-pdf ~/Documents/all-posts.pdf
 Read another publication:
 
 ```bash
-bundle exec ruby substack_to_pdf.rb --base-url https://example.substack.com --output output-example
+bundle exec ruby substack_to_pdf.rb \
+  --base-url https://kauanacoimbra.substack.com/archive \
+  --output output-kauana
 ```
+
+The URL may be the publication homepage, its `/archive` page, or just the host:
+
+```bash
+bundle exec ruby substack_to_pdf.rb --publication kauanacoimbra.substack.com/archive
+```
+
+The scraper does not read the publication homepage. It reads the public archive API at `/api/v1/archive` and then each post's canonical URL. This means a customized homepage layout does not affect the result. Passing the `/archive` URL is still supported and is normalized to the publication origin.
+
+When switching publications, use a separate `--output` directory so posts from different publications do not share the same HTML library. Without `--output`, the default is `./output` for every publication.
 
 ## Output layout
 
@@ -192,5 +204,6 @@ This separation makes each class independently replaceable and testable, and kee
 
 - **`archive HTTP 400`**: Confirm that `--base-url` points to a valid Substack publication. The archive API rejects unsupported pagination parameters and page sizes above 25.
 - **Browser does not start**: Make sure Chrome/Chromium is installed and that a display is available. On a headless server, run the command through `xvfb-run`.
+- **Unlock keyring prompt**: Chromium is trying to use GNOME Keyring/KWallet to protect its temporary profile. The browser is launched with `--password-store=basic` and `--use-mock-keychain`, which avoid the prompt and are safe for this automation-only profile.
 - **Some images are missing**: Image downloads are independent from article scraping. Failures are printed as warnings and the affected image is replaced with a note in the HTML. Re-running the command after fixing network access will use newly downloaded images.
 - **A post keeps failing**: Inspect `output/errors.log` for the error type and backtrace. Use `--force` after fixing the problem to retry the file.

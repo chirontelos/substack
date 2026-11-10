@@ -178,3 +178,41 @@ class PostLibraryTest < Minitest::Test
     end
   end
 end
+
+class SettingsTest < Minitest::Test
+  def settings(base_url)
+    SubstackPdf::Settings.new(output_dir: Dir.tmpdir, base_url: base_url)
+  end
+
+  def test_accepts_publication_homepage
+    assert_equal(
+      "https://onlylsc.substack.com",
+      settings("https://onlylsc.substack.com/").base_url
+    )
+  end
+
+  def test_accepts_archive_url_and_keeps_only_the_origin
+    assert_equal(
+      "https://kauanacoimbra.substack.com",
+      settings("https://kauanacoimbra.substack.com/archive?sort=new").base_url
+    )
+  end
+
+  def test_accepts_host_without_scheme
+    assert_equal(
+      "https://kauanacoimbra.substack.com",
+      settings("kauanacoimbra.substack.com/archive").base_url
+    )
+  end
+
+  def test_preserves_non_default_port
+    assert_equal(
+      "http://example.test:8080",
+      settings("http://example.test:8080/archive").base_url
+    )
+  end
+
+  def test_rejects_non_http_schemes
+    assert_raises(ArgumentError) { settings("ftp://example.test/archive") }
+  end
+end

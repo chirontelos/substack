@@ -56,7 +56,7 @@ module SubstackPdf
           options[:output_dir] = value
         end
 
-        parser.on("--base-url URL", "Publication base URL (default: #{SubstackPdf::DEFAULT_BASE_URL})") do |value|
+        parser.on("--base-url URL", "--publication URL", "Publication homepage or /archive URL (default: #{SubstackPdf::DEFAULT_BASE_URL})") do |value|
           options[:base_url] = value
         end
 

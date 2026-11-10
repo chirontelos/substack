@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "uri"
+
 module SubstackPdf
   # Immutable user configuration shared by every use case.
   class Settings
@@ -39,10 +41,27 @@ module SubstackPdf
     private
 
     def normalize_base_url(value)
-      url = value.to_s.strip.sub(%r{/+\z}, "")
-      raise ArgumentError, "base URL cannot be empty" if url.empty?
+      raw = value.to_s.strip
+      raise ArgumentError, "base URL cannot be empty" if raw.empty?
 
-      url
+      unless raw.match?(%r{\Ahttps?://}i)
+        if raw.match?(%r{\A[a-z][a-z0-9+.-]*://}i)
+          raise ArgumentError, "base URL must use http or https"
+        end
+
+        raw = "https://#{raw}"
+      end
+
+      uri = URI.parse(raw)
+
+      unless uri.is_a?(URI::HTTP) && uri.host && !uri.host.empty?
+        raise ArgumentError, "base URL must be an http(s) URL"
+      end
+
+      port = uri.port == uri.default_port ? "" : ":#{uri.port}"
+      "#{uri.scheme.downcase}://#{uri.host}#{port}"
+    rescue URI::InvalidURIError
+      raise ArgumentError, "invalid base URL: #{value}"
     end
 
     def normalize_list(values)

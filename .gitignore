@@ -1,3 +1,13 @@
 /output/
 /output-*/
 *.log
+
+# Local secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Editor/agent session files
+.ruby-lsp/

@@ -128,6 +128,8 @@ module SubstackPdf
         "no-sandbox" => nil,
         "no-first-run" => nil,
         "no-default-browser-check" => nil,
+        "password-store" => "basic",
+        "use-mock-keychain" => nil,
         "disable-background-networking" => nil,
         "disable-background-timer-throttling" => nil,
         "disable-backgrounding-occluded-windows" => nil,
