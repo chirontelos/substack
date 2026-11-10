@@ -52,7 +52,7 @@ module SubstackPdf
       OptionParser.new do |parser|
         parser.banner = "Usage: ruby substack_to_pdf.rb [options]"
 
-        parser.on("--output DIR", "Directory for HTML, PDFs and assets (default: ./output)") do |value|
+        parser.on("--output DIR", "Root directory for generated files (default: ./output)") do |value|
           options[:output_dir] = value
         end
 
@@ -80,7 +80,7 @@ module SubstackPdf
           options[:pdf_only] = true
         end
 
-        parser.on("--single-pdf [PATH]", "Combine saved HTML files into one PDF (default: output/pdf/all-posts.pdf)") do |value|
+        parser.on("--single-pdf [NAME_OR_PATH]", "Combine saved HTML into one PDF (default: output/single-pdfs/<author>-all-posts.pdf)") do |value|
           options[:single_pdf] = value || true
         end
 
@@ -120,7 +120,10 @@ module SubstackPdf
     end
 
     def dispatch(options, settings)
-      library = Infrastructure::PostLibrary.new(output_dir: settings.output_dir)
+      library = Infrastructure::PostLibrary.new(
+        output_dir: settings.output_dir,
+        author_slug: settings.author_slug
+      )
       archive = build_archive(settings)
       selector = Domain::PostSelector.new(only: settings.only, limit: settings.limit)
       error_log = Infrastructure::ErrorLog.new(library.error_log_path)

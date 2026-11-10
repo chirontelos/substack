@@ -7,7 +7,7 @@ module SubstackPdf
   class Settings
     ORDERS = %w[asc desc].freeze
 
-    attr_reader :base_url, :output_dir, :limit, :only, :force, :first, :order
+    attr_reader :base_url, :author_slug, :output_dir, :limit, :only, :force, :first, :order
 
     def initialize(
       output_dir:,
@@ -20,6 +20,7 @@ module SubstackPdf
       order: "asc"
     )
       @base_url = normalize_base_url(base_url)
+      @author_slug = derive_author_slug(@base_url)
       @output_dir = File.expand_path(output_dir)
       @limit = validate_limit(limit)
       @only = normalize_list(only).freeze
@@ -62,6 +63,13 @@ module SubstackPdf
       "#{uri.scheme.downcase}://#{uri.host}#{port}"
     rescue URI::InvalidURIError
       raise ArgumentError, "invalid base URL: #{value}"
+    end
+
+    def derive_author_slug(url)
+      host = URI.parse(url).host.to_s.downcase
+      slug = host.sub(/\Awww\./, "").sub(/\.substack\.com\z/, "")
+      slug = slug.gsub(/[^a-z0-9._-]+/, "-").gsub(/\A-+|-+\z/, "")
+      slug.empty? ? "publication" : slug
     end
 
     def normalize_list(values)

@@ -161,20 +161,73 @@ class HtmlArchiveTest < Minitest::Test
 end
 
 class PostLibraryTest < Minitest::Test
+  def build_post
+    SubstackPdf::Domain::Post.new(
+      id: 7,
+      title: "Title",
+      subtitle: "",
+      slug: "My Post!",
+      canonical_url: "https://example.substack.com/p/my-post",
+      published_at: Time.utc(2026, 5, 6)
+    )
+  end
+
   def test_filenames_use_date_and_slug
     Dir.mktmpdir do |dir|
-      library = SubstackPdf::Infrastructure::PostLibrary.new(output_dir: dir)
-      post = SubstackPdf::Domain::Post.new(
-        id: 7,
-        title: "Title",
-        subtitle: "",
-        slug: "My Post!",
-        canonical_url: "https://example.substack.com/p/my-post",
-        published_at: Time.utc(2026, 5, 6)
+      library = SubstackPdf::Infrastructure::PostLibrary.new(
+        output_dir: dir,
+        author_slug: "example"
       )
+      post = build_post
 
       assert_equal "2026-05-06-My-Post", library.filename_for(post)
       assert library.html_path(post).end_with?("2026-05-06-My-Post.html")
+    end
+  end
+
+  def test_uses_author_specific_html_and_pdf_directories
+    Dir.mktmpdir do |dir|
+      library = SubstackPdf::Infrastructure::PostLibrary.new(
+        output_dir: dir,
+        author_slug: "kauanacoimbra"
+      )
+
+      assert_equal File.join(dir, "kauanacoimbra", "html"), library.html_dir
+      assert_equal File.join(dir, "kauanacoimbra", "pdf"), library.pdf_dir
+      assert_equal File.join(dir, "kauanacoimbra", "assets"), library.asset_dir
+    end
+  end
+
+  def test_single_pdfs_share_one_directory_and_default_name_uses_author
+    Dir.mktmpdir do |dir|
+      library = SubstackPdf::Infrastructure::PostLibrary.new(
+        output_dir: dir,
+        author_slug: "kauanacoimbra"
+      )
+
+      assert_equal File.join(dir, "single-pdfs"), library.single_pdf_dir
+      assert_equal(
+        File.join(dir, "single-pdfs", "kauanacoimbra-all-posts.pdf"),
+        library.default_combined_pdf_path
+      )
+      assert_equal(
+        File.join(dir, "single-pdfs", "custom-name.pdf"),
+        library.combined_pdf_path("custom-name")
+      )
+    end
+  end
+
+  def test_single_pdf_accepts_an_explicit_path
+    Dir.mktmpdir do |dir|
+      library = SubstackPdf::Infrastructure::PostLibrary.new(
+        output_dir: dir,
+        author_slug: "onlylsc"
+      )
+
+      assert_equal(
+        File.join(dir, "custom", "combined.pdf"),
+        library.combined_pdf_path(File.join(dir, "custom", "combined.pdf"))
+      )
     end
   end
 end
@@ -214,5 +267,13 @@ class SettingsTest < Minitest::Test
 
   def test_rejects_non_http_schemes
     assert_raises(ArgumentError) { settings("ftp://example.test/archive") }
+  end
+
+  def test_derives_author_slug_from_substack_subdomain
+    assert_equal "kauanacoimbra", settings("https://kauanacoimbra.substack.com/archive").author_slug
+  end
+
+  def test_derives_author_slug_from_custom_domain
+    assert_equal "example.com", settings("https://www.example.com/archive").author_slug
   end
 end

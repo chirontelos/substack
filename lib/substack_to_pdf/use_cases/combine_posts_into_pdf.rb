@@ -33,7 +33,7 @@ module SubstackPdf
           return
         end
 
-        output_path = File.expand_path(output_path || @library.default_combined_pdf_path)
+        output_path = @library.combined_pdf_path(output_path)
         FileUtils.mkdir_p(File.dirname(output_path))
 
         puts "Combining #{html_files.size} HTML file(s) into #{output_path}"
