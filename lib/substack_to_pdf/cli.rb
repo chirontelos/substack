@@ -33,7 +33,7 @@ module SubstackPdf
     def defaults
       {
         output_dir: File.join(SubstackPdf::ROOT, "output"),
-        base_url: SubstackPdf::DEFAULT_BASE_URL,
+        base_url: nil,
         limit: nil,
         only: [],
         force: false,
@@ -64,7 +64,7 @@ module SubstackPdf
           options[:limit] = value
         end
 
-        parser.on("--only SLUG_OR_URL", "Process only the matching post; repeat or use commas for several") do |value|
+        parser.on("--only SLUG_OR_URL", "Process only the matching post; repeat or use commas. A post URL also selects its publication") do |value|
           options[:only].concat(value.split(",").map(&:strip).reject(&:empty?))
         end
 

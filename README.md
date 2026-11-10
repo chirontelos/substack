@@ -66,7 +66,7 @@ bundle exec ruby substack_to_pdf.rb
 | `--output DIR` | Root directory for generated files. Default: `./output`. Each author gets a subfolder inside it. |
 | `--base-url URL`, `--publication URL` | Publication to scrape. Accepts the homepage or the `/archive` URL, with or without `https://`. Only the scheme, host and port are used. Default: `https://onlylsc.substack.com`. |
 | `--limit N` | Process only the first N posts from the selected archive results. |
-| `--only SLUG_OR_URL` | Process only the matching post. Repeat the option or separate values with commas to select several posts. |
+| `--only SLUG_OR_URL` | Process only the matching post. Repeat the option or separate values with commas to select several posts. If you pass a full post URL and omit `--publication`/`--base-url`, the publication is inferred from that URL. |
 | `--force` | Overwrite existing HTML/PDF files. |
 | `--no-pdf` | Save only the scraped HTML; do not generate PDFs. |
 | `--pdf-only` | Convert HTML files already present in the author's `html/` folder to PDFs, without scraping the archive. |
@@ -91,6 +91,16 @@ When more than one mode is supplied, they are evaluated in this order: `--list`,
 --only my-post-slug,another-post
 --only my-post-slug --only another-post
 ```
+
+When `--only` contains a full post URL, it also selects the publication. This works without `--base-url` / `--publication`, and the post is saved under that author's folder:
+
+```bash
+bundle exec ruby substack_to_pdf.rb \
+  --only https://kauanacoimbra.substack.com/p/a-redencao-androgina \
+  --no-pdf
+```
+
+The same holds for `--pdf-only`, `--single-pdf`, `--check-new`, and `--list`. An explicit `--base-url` always wins. Passing post URLs from more than one publication in the same run is rejected.
 
 `--first` accepts a slug, an HTML file name, or an absolute path to an HTML file:
 

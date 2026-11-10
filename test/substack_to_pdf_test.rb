@@ -22,6 +22,8 @@ class PostTest < Minitest::Test
     assert post.matches?("my-post")
     assert post.matches?("https://example.substack.com/p/my-post")
     assert post.matches?("https://example.substack.com/p/my-post?utm_source=test")
+    assert post.matches?("https://example.substack.com/p/my-post/")
+    assert post.matches?("example.substack.com/p/my-post")
     refute post.matches?("another-post")
   end
 
@@ -275,5 +277,48 @@ class SettingsTest < Minitest::Test
 
   def test_derives_author_slug_from_custom_domain
     assert_equal "example.com", settings("https://www.example.com/archive").author_slug
+  end
+
+  def test_infers_publication_from_post_url_in_only
+    settings = SubstackPdf::Settings.new(
+      output_dir: Dir.tmpdir,
+      only: ["https://kauanacoimbra.substack.com/p/a-redencao-androgina"]
+    )
+
+    assert_equal "https://kauanacoimbra.substack.com", settings.base_url
+    assert_equal "kauanacoimbra", settings.author_slug
+  end
+
+  def test_infers_publication_from_scheme_less_post_url_in_only
+    settings = SubstackPdf::Settings.new(
+      output_dir: Dir.tmpdir,
+      only: ["kauanacoimbra.substack.com/p/a-redencao-androgina"]
+    )
+
+    assert_equal "https://kauanacoimbra.substack.com", settings.base_url
+  end
+
+  def test_explicit_base_url_wins_over_only_url
+    settings = SubstackPdf::Settings.new(
+      output_dir: Dir.tmpdir,
+      base_url: "https://onlylsc.substack.com",
+      only: ["https://kauanacoimbra.substack.com/p/a-redencao-androgina"]
+    )
+
+    assert_equal "https://onlylsc.substack.com", settings.base_url
+  end
+
+  def test_rejects_post_urls_from_multiple_publications
+    error = assert_raises(ArgumentError) do
+      SubstackPdf::Settings.new(
+        output_dir: Dir.tmpdir,
+        only: [
+          "https://kauanacoimbra.substack.com/p/one",
+          "https://onlylsc.substack.com/p/two"
+        ]
+      )
+    end
+
+    assert_match(/more than one publication/, error.message)
   end
 end
