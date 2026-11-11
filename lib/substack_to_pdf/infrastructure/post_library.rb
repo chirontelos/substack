@@ -17,7 +17,7 @@ module SubstackPdf
       attr_reader :root_dir, :author_slug, :author_dir, :html_dir, :pdf_dir,
                   :asset_dir, :single_pdf_dir, :error_log_path
 
-      def initialize(output_dir:, author_slug:)
+      def initialize(output_dir:, author_slug:, create_dirs: true)
         @root_dir = File.expand_path(output_dir)
         @author_slug = author_slug
         @author_dir = File.join(@root_dir, @author_slug)
@@ -27,8 +27,10 @@ module SubstackPdf
         @single_pdf_dir = File.join(@root_dir, "single-pdfs")
         @error_log_path = File.join(@author_dir, "errors.log")
 
-        [@root_dir, @author_dir, @html_dir, @pdf_dir, @asset_dir, @single_pdf_dir].each do |dir|
-          FileUtils.mkdir_p(dir)
+        if create_dirs
+          [@root_dir, @author_dir, @html_dir, @pdf_dir, @asset_dir, @single_pdf_dir].each do |dir|
+            FileUtils.mkdir_p(dir)
+          end
         end
       end
 
@@ -66,25 +68,36 @@ module SubstackPdf
         File.join(@author_dir, "combined.html")
       end
 
-      # Resolves the --single-pdf value:
-      #   nil/bare name  -> <root>/single-pdfs/<name or author>-all-posts.pdf
-      #   path with dirs -> that exact path
-      def combined_pdf_path(value = nil)
-        return default_combined_pdf_path if value.nil? || value == true
+      # Resolves the single-PDF destination:
+      #   name -> <root>/single-pdfs/<name>.pdf
+      #   path -> that exact path
+      #   neither -> <root>/single-pdfs/<author>-all-posts.pdf
+      def combined_pdf_path(name: nil, path: nil)
+        explicit_path = path.to_s.strip
+        return File.expand_path(explicit_path) unless explicit_path.empty?
 
-        name = value.to_s.strip
-        return default_combined_pdf_path if name.empty?
+        explicit_name = name.to_s.strip
+        return default_combined_pdf_path if explicit_name.empty?
 
-        unless File.dirname(name) == "."
-          return File.expand_path(name)
-        end
+        explicit_name = "#{explicit_name}.pdf" unless explicit_name.downcase.end_with?(".pdf")
+        File.join(@single_pdf_dir, explicit_name)
+      end
 
-        name = "#{name}.pdf" unless name.downcase.end_with?(".pdf")
-        File.join(@single_pdf_dir, name)
+      def custom_combined_pdf?(name: nil, path: nil)
+        !path.to_s.strip.empty? || !name.to_s.strip.empty?
       end
 
       def default_combined_pdf_path
         File.join(@single_pdf_dir, "#{@author_slug}-all-posts.pdf")
+      end
+
+      # A post is fully exported when its HTML exists, and when the PDF also
+      # exists if PDF output is enabled.
+      def exported?(post, require_pdf: true)
+        return false unless exist?(html_path(post))
+        return true unless require_pdf
+
+        exist?(pdf_path(post))
       end
 
       def filename_for(post)

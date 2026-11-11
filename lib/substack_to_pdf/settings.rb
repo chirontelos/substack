@@ -21,7 +21,12 @@ module SubstackPdf
       order: "asc"
     )
       @only = normalize_list(only).freeze
-      @base_url = normalize_base_url(base_url || base_url_from_only(@only) || DEFAULT_BASE_URL)
+      resolved_base_url = base_url || base_url_from_only(@only)
+      if resolved_base_url.nil? || resolved_base_url.to_s.strip.empty?
+        raise ArgumentError, "publication is required; pass --publication, a --post URL, or --config"
+      end
+
+      @base_url = normalize_base_url(resolved_base_url)
       @author_slug = derive_author_slug(@base_url)
       @output_dir = File.expand_path(output_dir)
       @limit = validate_limit(limit)
@@ -66,8 +71,8 @@ module SubstackPdf
       raise ArgumentError, "invalid base URL: #{value}"
     end
 
-    # When --base-url is omitted, a full post URL in --only also identifies
-    # the publication, so `--only https://author.substack.com/p/slug` works
+    # When --publication is omitted, a full post URL in --post also identifies
+    # the publication, so `--post https://author.substack.com/p/slug` works
     # on its own.
     def base_url_from_only(references)
       origins = references.filter_map do |reference|
@@ -99,10 +104,10 @@ module SubstackPdf
       slug.empty? ? "publication" : slug
     end
 
+    # Values are split once by the CLI. Settings only normalizes what it receives.
     def normalize_list(values)
       Array(values)
-        .flat_map { |value| value.to_s.split(",") }
-        .map(&:strip)
+        .map { |value| value.to_s.strip }
         .reject(&:empty?)
         .uniq
     end

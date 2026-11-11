@@ -1,0 +1,32 @@
+# Example configuration for substack_to_pdf.rb
+#
+# Copy this file, edit it, then run:
+#   bundle exec ruby substack_to_pdf.rb --config substack_to_pdf.yml
+#
+# Command-line flags override values from this file.
+
+# Required unless every --post value is a full post URL.
+publication: https://kauanacoimbra.substack.com
+
+# Root directory for generated files. Each author gets a subfolder.
+# root: ./output
+
+# Process at most N posts. For export and --check-new, only unsaved posts count.
+# limit: 5
+
+# Only process these posts. Slugs or full post URLs may be used.
+# post:
+#   - o-nascimento-do-intelectual
+
+# Put these saved posts first in a combined PDF (used with --single-pdf).
+# first:
+#   - welcome
+
+# Used with --single-pdf: asc or desc.
+# order: asc
+
+# Boolean options.
+# force: false
+# html_only: false
+# quiet: false
+# json: false

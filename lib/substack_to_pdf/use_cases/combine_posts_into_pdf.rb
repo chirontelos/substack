@@ -10,7 +10,20 @@ module SubstackPdf
       TITLE = "L.S.C. - Posts"
       SUBJECT = "Coleção de posts"
 
-      def initialize(library:, renderer:, error_log:, only: [], first: [], order: "asc", limit: nil)
+      def initialize(
+        library:,
+        renderer:,
+        error_log:,
+        only: [],
+        first: [],
+        order: "asc",
+        limit: nil,
+        force: false,
+        output_name: nil,
+        output_path: nil,
+        dry_run: false,
+        reporter: Infrastructure::Reporter.new
+      )
         @library = library
         @renderer = renderer
         @error_log = error_log
@@ -18,9 +31,14 @@ module SubstackPdf
         @first = first
         @order = order
         @limit = limit
+        @force = force
+        @output_name = output_name
+        @output_path = output_path
+        @dry_run = dry_run
+        @reporter = reporter
       end
 
-      def call(output_path: nil)
+      def call
         html_files = @library.html_archive.ordered(
           only: @only,
           first: @first,
@@ -29,14 +47,25 @@ module SubstackPdf
         )
 
         if html_files.empty?
-          warn "No HTML files found in #{@library.html_dir}."
-          return
+          @reporter.warn "No HTML files found in #{@library.html_dir}."
+          return nil
         end
 
-        output_path = @library.combined_pdf_path(output_path)
-        FileUtils.mkdir_p(File.dirname(output_path))
+        output_path = destination
+        custom = @library.custom_combined_pdf?(name: @output_name, path: @output_path)
 
-        puts "Combining #{html_files.size} HTML file(s) into #{output_path}"
+        if custom && File.exist?(output_path) && !@force
+          @reporter.warn "Refusing to overwrite #{output_path}; use --force to replace it."
+          return :exists
+        end
+
+        if @dry_run
+          @reporter.info "Would combine #{html_files.size} HTML file(s) into #{output_path}"
+          return output_path
+        end
+
+        FileUtils.mkdir_p(File.dirname(output_path))
+        @reporter.info "Combining #{html_files.size} HTML file(s) into #{output_path}"
 
         combined_html = build_combined_html(html_files)
         @library.write(@library.combined_html_path, combined_html)
@@ -50,13 +79,19 @@ module SubstackPdf
           fonts: liberation_fonts
         )
 
-        puts "  saved #{File.basename(output_path)} (#{File.size(output_path)} bytes)"
+        @reporter.info "  saved #{File.basename(output_path)} (#{File.size(output_path)} bytes)"
+        output_path
       rescue StandardError => error
         @error_log.record("single PDF", error)
-        warn "  failed: #{error.class}: #{error.message}"
+        @reporter.warn "  failed: #{error.class}: #{error.message}"
+        nil
       end
 
       private
+
+      def destination
+        @library.combined_pdf_path(name: @output_name, path: @output_path)
+      end
 
       def build_combined_html(html_files)
         sections = html_files.each_with_index.map do |html_path, index|

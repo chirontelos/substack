@@ -116,6 +116,23 @@ class CheckNewPostsTest < Minitest::Test
     assert_equal [2], @new_posts.map(&:id)
     assert_includes output, "1 new post(s)"
   end
+
+  def test_limit_counts_only_unsaved_posts
+    archive = FakeArchive.new([post(1), post(2), post(3)])
+    library = FakeLibrary.new([1])
+    selector = SubstackPdf::Domain::PostSelector.new(limit: 1)
+    use_case = SubstackPdf::UseCases::CheckNewPosts.new(
+      archive: archive,
+      library: library,
+      selector: selector,
+      limit: 1
+    )
+
+    _output, error = capture_io { @new_posts = use_case.call }
+
+    assert_equal [2], @new_posts.map(&:id)
+    assert_includes error, "--limit 1 counts only posts that are not saved yet"
+  end
 end
 
 class HtmlArchiveTest < Minitest::Test
@@ -214,7 +231,7 @@ class PostLibraryTest < Minitest::Test
       )
       assert_equal(
         File.join(dir, "single-pdfs", "custom-name.pdf"),
-        library.combined_pdf_path("custom-name")
+        library.combined_pdf_path(name: "custom-name")
       )
     end
   end
@@ -228,8 +245,24 @@ class PostLibraryTest < Minitest::Test
 
       assert_equal(
         File.join(dir, "custom", "combined.pdf"),
-        library.combined_pdf_path(File.join(dir, "custom", "combined.pdf"))
+        library.combined_pdf_path(path: File.join(dir, "custom", "combined.pdf"))
       )
+      assert library.custom_combined_pdf?(path: File.join(dir, "custom", "combined.pdf"))
+      refute library.custom_combined_pdf?
+    end
+  end
+
+  def test_can_skip_directory_creation_for_dry_runs
+    Dir.mktmpdir do |dir|
+      root = File.join(dir, "root")
+      library = SubstackPdf::Infrastructure::PostLibrary.new(
+        output_dir: root,
+        author_slug: "onlylsc",
+        create_dirs: false
+      )
+
+      refute File.exist?(root)
+      assert_equal File.join(root, "onlylsc", "html"), library.html_dir
     end
   end
 end
@@ -320,5 +353,202 @@ class SettingsTest < Minitest::Test
     end
 
     assert_match(/more than one publication/, error.message)
+  end
+end
+
+class CLITest < Minitest::Test
+  def cli(*args)
+    SubstackPdf::CLI.new(args)
+  end
+
+  def test_version
+    output, = capture_io { assert_equal 0, cli("--version").run }
+
+    assert_equal "substack_to_pdf #{SubstackPdf::VERSION}\n", output
+  end
+
+  def test_rejects_multiple_modes
+    _output, error = capture_io do
+      assert_equal 1, cli("--list", "--pdf-only").run
+    end
+
+    assert_includes error, "cannot be used together"
+  end
+
+  def test_rejects_name_and_path_together
+    _output, error = capture_io do
+      assert_equal 1, cli("--single-pdf", "--name", "one", "--path", "two.pdf").run
+    end
+
+    assert_includes error, "--name and --path cannot be used together"
+  end
+
+  def test_irrelevant_flag_warns_but_does_not_fail
+    Dir.mktmpdir do |dir|
+      _output, error = capture_io do
+        assert_equal 0, cli(
+          "--pdf-only", "--json", "--allow-empty",
+          "--root", dir, "--publication", "https://onlylsc.substack.com"
+        ).run
+      end
+
+      assert_includes error, "Warning: --json is ignored with --pdf-only."
+    end
+  end
+
+  def test_empty_conversion_exits_with_two_by_default
+    Dir.mktmpdir do |dir|
+      _output, error = capture_io do
+        assert_equal 2, cli(
+          "--pdf-only",
+          "--root", dir,
+          "--publication", "https://onlylsc.substack.com"
+        ).run
+      end
+
+      assert_includes error, "No HTML files found"
+    end
+  end
+
+  def test_allow_empty_makes_empty_conversion_successful
+    Dir.mktmpdir do |dir|
+      capture_io do
+        assert_equal 0, cli(
+          "--pdf-only", "--allow-empty",
+          "--root", dir, "--publication", "https://onlylsc.substack.com"
+        ).run
+      end
+    end
+  end
+
+  def test_dry_run_does_not_create_output_directories
+    Dir.mktmpdir do |dir|
+      root = File.join(dir, "root")
+      capture_io do
+        assert_equal 0, cli(
+          "--pdf-only",
+          "--dry-run",
+          "--allow-empty",
+          "--root", root,
+          "--publication", "https://onlylsc.substack.com"
+        ).run
+      end
+
+      refute File.exist?(root)
+    end
+  end
+
+  def test_splits_comma_separated_values_once_in_the_cli
+    options = { posts: ["one,two", "three"], first: ["welcome, intro"] }
+
+    cli.send(:normalize_lists!, options)
+
+    assert_equal %w[one two three], options[:posts]
+    assert_equal %w[welcome intro], options[:first]
+  end
+
+  def test_publication_is_required_when_no_config_or_post_url_is_given
+    Dir.mktmpdir do |dir|
+      _output, error = capture_io do
+        assert_equal 1, cli("--pdf-only", "--root", dir, "--allow-empty").run
+      end
+
+      assert_includes error, "publication is required"
+    end
+  end
+
+  def test_config_supplies_publication_and_root
+    Dir.mktmpdir do |dir|
+      root = File.join(dir, "out")
+      config = File.join(dir, "config.yml")
+      File.write(config, "publication: https://onlylsc.substack.com\nroot: #{root}\n")
+
+      capture_io do
+        assert_equal 0, cli("--pdf-only", "--allow-empty", "--config", config).run
+      end
+
+      assert Dir.exist?(File.join(root, "onlylsc"))
+    end
+  end
+
+  def test_cli_publication_overrides_config
+    Dir.mktmpdir do |dir|
+      root = File.join(dir, "out")
+      config = File.join(dir, "config.yml")
+      File.write(config, "publication: https://onlylsc.substack.com\nroot: #{root}\n")
+
+      capture_io do
+        assert_equal 0, cli(
+          "--pdf-only", "--allow-empty", "--config", config,
+          "--publication", "https://kauanacoimbra.substack.com"
+        ).run
+      end
+
+      assert Dir.exist?(File.join(root, "kauanacoimbra"))
+      refute Dir.exist?(File.join(root, "onlylsc"))
+    end
+  end
+
+  def test_missing_config_file_is_a_usage_error
+    _output, error = capture_io do
+      assert_equal 1, cli("--config", "/does/not/exist.yml", "--pdf-only").run
+    end
+
+    assert_includes error, "config file not found"
+  end
+
+  def test_invalid_config_file_is_a_usage_error
+    Dir.mktmpdir do |dir|
+      config = File.join(dir, "config.yml")
+      File.write(config, "[\n")
+
+      _output, error = capture_io do
+        assert_equal 1, cli("--config", config, "--pdf-only").run
+      end
+
+      assert_includes error, "invalid config file"
+    end
+  end
+
+  def test_unknown_config_key_warns
+    Dir.mktmpdir do |dir|
+      config = File.join(dir, "config.yml")
+      File.write(config, "publication: https://onlylsc.substack.com\nunknown_key: true\n")
+
+      _output, error = capture_io do
+        assert_equal 0, cli(
+          "--pdf-only", "--allow-empty", "--config", config, "--root", dir
+        ).run
+      end
+
+      assert_includes error, "Warning: unknown config key: unknown_key"
+    end
+  end
+
+  def test_config_lists_and_booleans_are_applied
+    Dir.mktmpdir do |dir|
+      config_path = File.join(dir, "config.yml")
+      File.write(config_path, <<~YAML)
+        publication: https://onlylsc.substack.com
+        post: [one, two]
+        first: welcome, intro
+        force: true
+        html_only: true
+        quiet: true
+        json: true
+      YAML
+
+      options = cli.send(:defaults)
+      config = cli.send(:load_config, config_path)
+      cli.send(:apply_config!, options, config)
+      cli.send(:normalize_lists!, options)
+
+      assert_equal %w[one two], options[:posts]
+      assert_equal %w[welcome intro], options[:first]
+      assert options[:force]
+      assert options[:html_only]
+      assert options[:quiet]
+      assert options[:json]
+    end
   end
 end

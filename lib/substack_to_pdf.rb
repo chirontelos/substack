@@ -2,7 +2,7 @@
 
 module SubstackPdf
   ROOT = File.expand_path("..", __dir__)
-  DEFAULT_BASE_URL = "https://onlylsc.substack.com"
+  VERSION = "2.1.0"
 end
 
 require_relative "substack_to_pdf/settings"
@@ -21,6 +21,7 @@ require_relative "substack_to_pdf/infrastructure/html_archive"
 require_relative "substack_to_pdf/infrastructure/pdf_renderer"
 require_relative "substack_to_pdf/infrastructure/error_log"
 require_relative "substack_to_pdf/infrastructure/post_library"
+require_relative "substack_to_pdf/infrastructure/reporter"
 
 require_relative "substack_to_pdf/use_cases/export_posts"
 require_relative "substack_to_pdf/use_cases/list_posts"

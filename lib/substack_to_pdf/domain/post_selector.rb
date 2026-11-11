@@ -2,7 +2,7 @@
 
 module SubstackPdf
   module Domain
-    # Applies the --only and --limit filters to a collection of posts.
+    # Applies the --post and --limit filters to a collection of posts.
     class PostSelector
       Selection = Struct.new(:posts, :unmatched, keyword_init: true)
 
@@ -11,10 +11,10 @@ module SubstackPdf
         @limit = limit
       end
 
-      def call(posts)
+      def call(posts, limit: @limit)
         matching = @only.empty? ? posts : posts.select { |post| matches?(post) }
         unmatched = @only.reject { |value| posts.any? { |post| post.matches?(value) } }
-        limited = @limit ? matching.first(@limit) : matching
+        limited = limit ? matching.first(limit) : matching
 
         Selection.new(posts: limited, unmatched: unmatched)
       end

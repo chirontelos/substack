@@ -2,7 +2,7 @@
 
 Download the posts of a Substack publication, store a clean offline copy of each article as HTML, and render them as PDFs.
 
-The tool was originally written for [onlylsc.substack.com](https://onlylsc.substack.com), but the publication URL can be changed with `--base-url` / `--publication`.
+The tool was originally written for [onlylsc.substack.com](https://onlylsc.substack.com), but the publication URL can be changed with `--publication` or a configuration file.
 
 ## Features
 
@@ -13,7 +13,8 @@ The tool was originally written for [onlylsc.substack.com](https://onlylsc.subst
 - Renders individual PDFs, or one combined PDF containing every saved post.
 - Stores all combined PDFs in a shared `single-pdfs/` folder, named after the author by default.
 - Skips files that already exist unless `--force` is used.
-- Keeps a log of failures in `<output>/<author>/errors.log`.
+- Reads defaults from a YAML file with `--config`.
+- Keeps a log of failures in `<root>/<author>/errors.log`.
 
 ## Requirements
 
@@ -30,18 +31,28 @@ bundle install
 
 ## Quick start
 
+A publication is required unless a configuration file or a full `--post` URL provides it.
+
 ```bash
 # Download every post and generate both HTML and PDF files
-bundle exec ruby substack_to_pdf.rb
+bundle exec ruby substack_to_pdf.rb --publication https://onlylsc.substack.com
 
 # Show the posts available in the archive
-bundle exec ruby substack_to_pdf.rb --list
+bundle exec ruby substack_to_pdf.rb --publication https://onlylsc.substack.com --list
 
 # Show only the posts that have not been downloaded yet
-bundle exec ruby substack_to_pdf.rb --check-new
+bundle exec ruby substack_to_pdf.rb --publication https://onlylsc.substack.com --check-new
 
-# Download only the first 5 posts
-bundle exec ruby substack_to_pdf.rb --limit 5
+# Download only the first 5 posts that are not saved yet
+bundle exec ruby substack_to_pdf.rb --publication https://onlylsc.substack.com --limit 5
+```
+
+Or save the publication once in a config file:
+
+```bash
+cp substack_to_pdf.example.yml substack_to_pdf.yml
+# edit substack_to_pdf.yml
+bundle exec ruby substack_to_pdf.rb --config substack_to_pdf.yml
 ```
 
 By default everything is written under the `output/` directory next to the script, grouped by author. For example, `onlylsc.substack.com` goes to `output/onlylsc/`, and `kauanacoimbra.substack.com` goes to `output/kauanacoimbra/`.
@@ -53,54 +64,102 @@ A post is considered new when its generated HTML file does not exist in the auth
 `--check-new` only reports the missing posts and exits; it does not download them. Run the exporter normally afterwards and the existing posts will be skipped automatically:
 
 ```bash
-bundle exec ruby substack_to_pdf.rb --check-new
-bundle exec ruby substack_to_pdf.rb
+bundle exec ruby substack_to_pdf.rb --publication https://onlylsc.substack.com --check-new
+bundle exec ruby substack_to_pdf.rb --publication https://onlylsc.substack.com
 ```
 
-`--limit` and `--only` also apply to `--check-new`, which makes it easy to inspect a specific subset.
+`--limit` and `--post` also apply to `--check-new`. For export and `--check-new`, `--limit` counts only posts that are not saved yet. A warning is printed so the behavior is explicit.
+
+## Configuration file
+
+`--config FILE` reads defaults from a YAML file. Command-line flags always win over config values.
+
+```yaml
+publication: https://kauanacoimbra.substack.com
+root: ./output
+limit: 5
+post:
+  - a-redencao-androgina
+first:
+  - welcome
+order: asc
+force: false
+html_only: false
+quiet: false
+json: false
+```
+
+Supported keys:
+
+| Key | Type | Equivalent option |
+| --- | --- | --- |
+| `publication` | string | `--publication` |
+| `root` | string | `--root` |
+| `limit` | integer | `--limit` |
+| `post` | string or list | `--post` |
+| `first` | string or list | `--first` |
+| `order` | `asc` or `desc` | `--order` |
+| `force` | boolean | `--force` |
+| `html_only` | boolean | `--html-only` |
+| `quiet` | boolean | `--quiet` |
+| `json` | boolean | `--json` |
+
+Modes such as `--list`, `--check-new`, `--pdf-only`, and `--single-pdf` are intentionally not part of the config file. Choose them on the command line. Unknown keys produce a warning.
+
+See `substack_to_pdf.example.yml` for a commented template.
 
 ## Options
 
 | Option | Description |
 | --- | --- |
-| `--output DIR` | Root directory for generated files. Default: `./output`. Each author gets a subfolder inside it. |
-| `--base-url URL`, `--publication URL` | Publication to scrape. Accepts the homepage or the `/archive` URL, with or without `https://`. Only the scheme, host and port are used. Default: `https://onlylsc.substack.com`. |
-| `--limit N` | Process only the first N posts from the selected archive results. |
-| `--only SLUG_OR_URL` | Process only the matching post. Repeat the option or separate values with commas to select several posts. If you pass a full post URL and omit `--publication`/`--base-url`, the publication is inferred from that URL. |
-| `--force` | Overwrite existing HTML/PDF files. |
-| `--no-pdf` | Save only the scraped HTML; do not generate PDFs. |
-| `--pdf-only` | Convert HTML files already present in the author's `html/` folder to PDFs, without scraping the archive. |
-| `--single-pdf [NAME_OR_PATH]` | Combine the author's saved HTML files into one PDF. Default: `output/single-pdfs/<author>-all-posts.pdf`. A bare name such as `minha-colecao` creates `output/single-pdfs/minha-colecao.pdf`; a path with directories is used exactly as given. |
-| `--first SLUG_OR_FILE` | Place the given saved post first in the combined PDF. Repeat the option or separate values with commas to select several posts. |
-| `--order ORDER` | Sort the remaining numbered posts in `asc` or `desc` order for the combined PDF. Default: `asc`. |
+| `--config FILE` | Load defaults from a YAML configuration file. CLI flags override config values. |
+| `--root DIR` | Root directory for generated files. Default: `./output`. Each author gets a subfolder inside it. |
+| `--publication URL` | Publication to scrape. Accepts the homepage or the `/archive` URL, with or without `https://`. Only the scheme, host and port are used. Required unless set by `--config` or inferred from a full `--post` URL. |
+| `--post SLUG_OR_URL` | Process only the matching post. Repeat the option or separate values with commas to select several posts. If you pass a full post URL and omit `--publication`, the publication is inferred from that URL. |
+| `--limit N` | Process at most N posts. For export and `--check-new`, only posts that are not saved yet are counted. |
 | `--list` | List the archive posts and exit. |
 | `--check-new` | List archive posts that have no saved HTML yet and exit. |
+| `--pdf-only` | Convert HTML files already present in the author's `html/` folder to PDFs, without scraping the archive. |
+| `--single-pdf` | Combine the author's saved HTML files into one PDF. Default: `output/single-pdfs/<author>-all-posts.pdf`. |
+| `--name NAME` | With `--single-pdf`, write to `<root>/single-pdfs/NAME.pdf`. A custom name is not overwritten unless `--force` is used. |
+| `--path PATH` | With `--single-pdf`, write the combined PDF to exactly this path. A custom path is not overwritten unless `--force` is used. |
+| `--first SLUG_OR_FILE` | With `--single-pdf`, place the given saved post first. Repeat the option or separate values with commas to select several posts. |
+| `--order ORDER` | With `--single-pdf`, sort the remaining numbered posts in `asc` or `desc` order. Default: `asc`. |
+| `--force` | Overwrite existing HTML/PDF files, including custom single PDFs. |
+| `--html-only` | Save only the scraped HTML; do not generate PDFs. |
+| `--dry-run` | Print what would be downloaded, converted, or written without writing files or launching the browser. |
+| `--allow-empty` | Exit with status 0 when no posts or files are selected. Without it, an empty result exits with status 2. |
+| `--quiet` | Suppress progress messages. Data and warnings are still printed. |
+| `--json` | Emit JSON instead of text for `--list` and `--check-new`. |
+| `--version` | Show the program version. |
 | `-h`, `--help` | Show the command help. |
 
-When more than one mode is supplied, they are evaluated in this order: `--list`, `--check-new`, `--single-pdf`, `--pdf-only`, and finally the normal export.
+Only one mode can be selected at a time: `--list`, `--check-new`, `--pdf-only`, or `--single-pdf`. Combining modes is an error rather than silently choosing one.
 
-`--pdf-only` and `--single-pdf` use the publication selected by `--publication` / `--base-url` to find that author's HTML folder. Pass the same publication URL that was used to download the posts.
+Flags that do not apply to the selected mode produce a warning and are ignored. For example, `--first` is only used by `--single-pdf`, and `--json` is only used by `--list` and `--check-new`.
+
+`--pdf-only` and `--single-pdf` use `--publication` to find that author's HTML folder. Pass the same publication URL that was used to download the posts, or a post URL with `--post`, which also identifies the publication.
 
 ### Selecting posts
 
-`--only` accepts any of these forms:
+`--post` accepts any of these forms:
 
 ```bash
---only my-post-slug
---only https://onlylsc.substack.com/p/my-post-slug
---only my-post-slug,another-post
---only my-post-slug --only another-post
+--post my-post-slug
+--post https://onlylsc.substack.com/p/my-post-slug
+--post my-post-slug,another-post
+--post my-post-slug --post another-post
 ```
 
-When `--only` contains a full post URL, it also selects the publication. This works without `--base-url` / `--publication`, and the post is saved under that author's folder:
+When `--post` contains a full post URL, it also selects the publication. This works without `--publication`, and the post is saved under that author's folder:
 
 ```bash
 bundle exec ruby substack_to_pdf.rb \
-  --only https://kauanacoimbra.substack.com/p/a-redencao-androgina \
-  --no-pdf
+  --post https://kauanacoimbra.substack.com/p/a-redencao-androgina \
+  --html-only
 ```
 
-The same holds for `--pdf-only`, `--single-pdf`, `--check-new`, and `--list`. An explicit `--base-url` always wins. Passing post URLs from more than one publication in the same run is rejected.
+The same holds for `--pdf-only`, `--single-pdf`, `--check-new`, and `--list`. An explicit `--publication` always wins. Passing post URLs from more than one publication in the same run is rejected.
 
 `--first` accepts a slug, an HTML file name, or an absolute path to an HTML file:
 
@@ -110,42 +169,77 @@ The same holds for `--pdf-only`, `--single-pdf`, `--check-new`, and `--list`. An
 --first /path/to/output/kauanacoimbra/html/2026-09-23-my-post-slug.html
 ```
 
-## Examples
+### Exit codes
 
-Download everything using the default settings:
-
-```bash
-bundle exec ruby substack_to_pdf.rb
+```text
+0  success
+1  usage or configuration error
+2  the requested work produced nothing
 ```
 
-Save only the HTML for the latest three posts:
+Exit status 2 is used when `--list` or export selects no posts, or when `--pdf-only` / `--single-pdf` finds no HTML files. Use `--allow-empty` when an empty result is expected, for example in a cron job. `--check-new` treats “no new posts” as success.
+
+### Dry runs, quiet mode, and JSON
+
+Preview work without writing files or launching Chrome:
 
 ```bash
-bundle exec ruby substack_to_pdf.rb --limit 3 --no-pdf
+bundle exec ruby substack_to_pdf.rb \
+  --post https://onlylsc.substack.com/p/my-post-slug \
+  --dry-run
+```
+
+Suppress progress messages:
+
+```bash
+bundle exec ruby substack_to_pdf.rb --publication https://onlylsc.substack.com --limit 5 --quiet
+```
+
+Emit machine-readable output for listing commands:
+
+```bash
+bundle exec ruby substack_to_pdf.rb --publication https://onlylsc.substack.com --list --json
+bundle exec ruby substack_to_pdf.rb --publication https://onlylsc.substack.com --check-new --json
+```
+
+The JSON output is an array of objects with `date`, `slug`, `title`, and `url`. Warnings still go to stderr, so stdout remains valid JSON.
+
+## Examples
+
+Download everything:
+
+```bash
+bundle exec ruby substack_to_pdf.rb --publication https://onlylsc.substack.com
+```
+
+Save only the HTML for the latest three unsaved posts:
+
+```bash
+bundle exec ruby substack_to_pdf.rb --publication https://onlylsc.substack.com --limit 3 --html-only
 ```
 
 Download a single post and overwrite it if it already exists:
 
 ```bash
-bundle exec ruby substack_to_pdf.rb --only my-post-slug --force
+bundle exec ruby substack_to_pdf.rb --publication https://onlylsc.substack.com --post my-post-slug --force
 ```
 
-Use a different output directory:
+Use a different root directory:
 
 ```bash
-bundle exec ruby substack_to_pdf.rb --output ~/Documents/substack
+bundle exec ruby substack_to_pdf.rb --publication https://onlylsc.substack.com --root ~/Documents/substack
 ```
 
 Generate PDFs from HTML files that were saved earlier:
 
 ```bash
-bundle exec ruby substack_to_pdf.rb --pdf-only
+bundle exec ruby substack_to_pdf.rb --publication https://onlylsc.substack.com --pdf-only
 ```
 
 Generate a single combined PDF, with the intro post first:
 
 ```bash
-bundle exec ruby substack_to_pdf.rb --single-pdf --first welcome
+bundle exec ruby substack_to_pdf.rb --publication https://onlylsc.substack.com --single-pdf --first welcome
 ```
 
 The default output is `output/single-pdfs/<author>-all-posts.pdf`.
@@ -153,23 +247,23 @@ The default output is `output/single-pdfs/<author>-all-posts.pdf`.
 Generate a combined PDF with a custom name in the shared `single-pdfs/` folder:
 
 ```bash
-bundle exec ruby substack_to_pdf.rb --single-pdf minha-colecao
+bundle exec ruby substack_to_pdf.rb --publication https://onlylsc.substack.com --single-pdf --name minha-colecao
 ```
 
-That creates `output/single-pdfs/minha-colecao.pdf`.
+That creates `output/single-pdfs/minha-colecao.pdf`. If that file already exists, the command refuses to overwrite it unless `--force` is passed.
 
 Generate a combined PDF at an explicit path:
 
 ```bash
-bundle exec ruby substack_to_pdf.rb --single-pdf ~/Documents/all-posts.pdf
+bundle exec ruby substack_to_pdf.rb --publication https://onlylsc.substack.com --single-pdf --path ~/Documents/all-posts.pdf
 ```
 
 Read another publication:
 
 ```bash
 bundle exec ruby substack_to_pdf.rb \
-  --base-url https://kauanacoimbra.substack.com/archive \
-  --output output-kauana
+  --publication https://kauanacoimbra.substack.com/archive \
+  --root output-kauana
 ```
 
 The URL may be the publication homepage, its `/archive` page, or just the host:
@@ -180,7 +274,7 @@ bundle exec ruby substack_to_pdf.rb --publication kauanacoimbra.substack.com/arc
 
 The scraper does not read the publication homepage. It reads the public archive API at `/api/v1/archive` and then each post's canonical URL. This means a customized homepage layout does not affect the result. Passing the `/archive` URL is still supported and is normalized to the publication origin.
 
-When switching publications, you no longer need separate `--output` directories for isolation: each author automatically gets its own subfolder. You may still use `--output` to choose a different root directory.
+When switching publications, you no longer need separate `--root` directories for isolation: each author automatically gets its own subfolder. You may still use `--root` to choose a different root directory.
 
 ## Output layout
 
@@ -222,7 +316,7 @@ mv output/errors.log output/onlylsc/errors.log 2>/dev/null || true
 mv output/combined.html output/onlylsc/combined.html 2>/dev/null || true
 ```
 
-If you previously used a flat directory such as `output-kauana`, move it the same way into `output/kauanacoimbra/` or keep using `--output output-kauana`. Otherwise, the program will simply treat the posts as new and download them again.
+If you previously used a flat directory such as `output-kauana`, move it the same way into `output/kauanacoimbra/` or keep using `--root output-kauana`. Otherwise, the program will simply treat the posts as new and download them again.
 
 Post files are named `YYYY-MM-DD-slug.html` and `YYYY-MM-DD-slug.pdf`. Posts without a valid publication date fall back to `post-<id>-<slug>`.
 
@@ -257,7 +351,8 @@ This separation makes each class independently replaceable and testable, and kee
 
 ## Troubleshooting
 
-- **`archive HTTP 400`**: Confirm that `--base-url` points to a valid Substack publication. The archive API rejects unsupported pagination parameters and page sizes above 25.
+- **`publication is required`**: Pass `--publication`, use a full post URL with `--post`, or set `publication` in a `--config` file.
+- **`archive HTTP 400`**: Confirm that `--publication` points to a valid Substack publication. The archive API rejects unsupported pagination parameters and page sizes above 25.
 - **Browser does not start**: Make sure Chrome/Chromium is installed and that a display is available. On a headless server, run the command through `xvfb-run`.
 - **Unlock keyring prompt**: Chromium is trying to use GNOME Keyring/KWallet to protect its temporary profile. The browser is launched with `--password-store=basic` and `--use-mock-keychain`, which avoid the prompt and are safe for this automation-only profile.
 - **Some images are missing**: Image downloads are independent from article scraping. Failures are printed as warnings and the affected image is replaced with a note in the HTML. Re-running the command after fixing network access will use newly downloaded images.
