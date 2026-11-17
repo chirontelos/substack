@@ -24,6 +24,7 @@ class PostTest < Minitest::Test
     assert post.matches?("https://example.substack.com/p/my-post?utm_source=test")
     assert post.matches?("https://example.substack.com/p/my-post/")
     assert post.matches?("example.substack.com/p/my-post")
+    assert post.matches?("https://substack.com/@example/p/my-post")
     refute post.matches?("another-post")
   end
 
@@ -286,6 +287,35 @@ class SettingsTest < Minitest::Test
     )
   end
 
+  def test_converts_substack_profile_url_to_publication_subdomain
+    assert_equal(
+      "https://kaisoku.substack.com",
+      settings("https://substack.com/@kaisoku").base_url
+    )
+    assert_equal "kaisoku", settings("https://substack.com/@kaisoku").author_slug
+  end
+
+  def test_converts_substack_profile_posts_url_to_publication_subdomain
+    assert_equal(
+      "https://fefeobufao.substack.com",
+      settings("https://substack.com/@fefeobufao/posts").base_url
+    )
+  end
+
+  def test_converts_scheme_less_substack_profile_url
+    assert_equal(
+      "https://kaisoku.substack.com",
+      settings("substack.com/@kaisoku").base_url
+    )
+  end
+
+  def test_strips_query_strings_from_custom_domains
+    assert_equal(
+      "https://subscribe.martyrmade.com",
+      settings("https://subscribe.martyrmade.com/?utm_source=homepage_recommendations&utm_campaign=2290196").base_url
+    )
+  end
+
   def test_accepts_host_without_scheme
     assert_equal(
       "https://kauanacoimbra.substack.com",
@@ -329,6 +359,16 @@ class SettingsTest < Minitest::Test
     )
 
     assert_equal "https://kauanacoimbra.substack.com", settings.base_url
+  end
+
+  def test_infers_publication_from_substack_profile_post_url
+    settings = SubstackPdf::Settings.new(
+      output_dir: Dir.tmpdir,
+      only: ["https://substack.com/@kaisoku/p/some-post"]
+    )
+
+    assert_equal "https://kaisoku.substack.com", settings.base_url
+    assert_equal "kaisoku", settings.author_slug
   end
 
   def test_explicit_base_url_wins_over_only_url
@@ -486,6 +526,19 @@ class CLITest < Minitest::Test
 
       assert Dir.exist?(File.join(root, "kauanacoimbra"))
       refute Dir.exist?(File.join(root, "onlylsc"))
+    end
+  end
+
+  def test_cli_converts_substack_profile_url_to_author_folder
+    Dir.mktmpdir do |dir|
+      capture_io do
+        assert_equal 0, cli(
+          "--pdf-only", "--allow-empty", "--root", dir,
+          "--publication", "https://substack.com/@kaisoku/posts"
+        ).run
+      end
+
+      assert Dir.exist?(File.join(dir, "kaisoku"))
     end
   end
 

@@ -114,7 +114,7 @@ See `substack_to_pdf.example.yml` for a commented template.
 | --- | --- |
 | `--config FILE` | Load defaults from a YAML configuration file. CLI flags override config values. |
 | `--root DIR` | Root directory for generated files. Default: `./output`. Each author gets a subfolder inside it. |
-| `--publication URL` | Publication to scrape. Accepts the homepage or the `/archive` URL, with or without `https://`. Only the scheme, host and port are used. Required unless set by `--config` or inferred from a full `--post` URL. |
+| `--publication URL` | Publication to scrape. Accepts the homepage, the `/archive` URL, or a Substack profile URL such as `https://substack.com/@author`, with or without `https://`. Only the scheme, host and port are used, so `/archive`, `/posts` and query strings such as `utm_*` are dropped. Required unless set by `--config` or inferred from a full `--post` URL. |
 | `--post SLUG_OR_URL` | Process only the matching post. Repeat the option or separate values with commas to select several posts. If you pass a full post URL and omit `--publication`, the publication is inferred from that URL. |
 | `--limit N` | Process at most N posts. For export and `--check-new`, only posts that are not saved yet are counted. |
 | `--list` | List the archive posts and exit. |
@@ -160,6 +160,15 @@ bundle exec ruby substack_to_pdf.rb \
 ```
 
 The same holds for `--pdf-only`, `--single-pdf`, `--check-new`, and `--list`. An explicit `--publication` always wins. Passing post URLs from more than one publication in the same run is rejected.
+
+Substack profile URLs are converted to the publication subdomain automatically, so these are equivalent:
+
+```bash
+bundle exec ruby substack_to_pdf.rb --publication https://substack.com/@kaisoku
+bundle exec ruby substack_to_pdf.rb --publication https://kaisoku.substack.com
+```
+
+This also applies to `--post` URLs like `https://substack.com/@kaisoku/p/my-post-slug`. Query strings and extra path segments are dropped from regular publication URLs too, so `https://subscribe.martyrmade.com/?utm_source=newsletter` becomes `https://subscribe.martyrmade.com`.
 
 `--first` accepts a slug, an HTML file name, or an absolute path to an HTML file:
 

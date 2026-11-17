@@ -6,7 +6,9 @@ module SubstackPdf
   # Immutable user configuration shared by every use case.
   class Settings
     ORDERS = %w[asc desc].freeze
-    POST_URL_PATTERN = %r{\A(?:https?://)?[^/\s]+/p/}i
+    POST_URL_PATTERN = %r{\A(?:https?://)?[^/\s]+/(?:.*/)?p/}i
+    SUBSTACK_PROFILE_PATTERN = %r{\A/@([^/]+)}i
+    SUBSTACK_HANDLE_PATTERN = /\A[a-z0-9][a-z0-9_-]*\z/i
 
     attr_reader :base_url, :author_slug, :output_dir, :limit, :only, :force, :first, :order
 
@@ -65,10 +67,33 @@ module SubstackPdf
         raise ArgumentError, "base URL must be an http(s) URL"
       end
 
-      port = uri.port == uri.default_port ? "" : ":#{uri.port}"
-      "#{uri.scheme.downcase}://#{uri.host}#{port}"
+      origin_for(uri)
     rescue URI::InvalidURIError
       raise ArgumentError, "invalid base URL: #{value}"
+    end
+
+    # Substack profile URLs (https://substack.com/@author) point at the
+    # publication subdomain (https://author.substack.com). Every other host,
+    # including custom domains, keeps only its origin. Paths and query strings,
+    # such as /archive, /posts or utm_* parameters, are never part of the base.
+    def origin_for(uri)
+      host = uri.host.to_s.downcase
+      port = uri.port == uri.default_port ? "" : ":#{uri.port}"
+
+      if %w[substack.com www.substack.com].include?(host)
+        handle = substack_handle(uri.path)
+        host = "#{handle}.substack.com" if handle
+      end
+
+      "#{uri.scheme.downcase}://#{host}#{port}"
+    end
+
+    def substack_handle(path)
+      match = path.to_s.match(SUBSTACK_PROFILE_PATTERN)
+      return nil unless match
+
+      handle = match[1].downcase
+      handle.match?(SUBSTACK_HANDLE_PATTERN) ? handle : nil
     end
 
     # When --publication is omitted, a full post URL in --post also identifies
@@ -80,12 +105,8 @@ module SubstackPdf
         next unless value.match?(POST_URL_PATTERN)
 
         value = "https://#{value}" unless value.match?(%r{\Ahttps?://}i)
-        uri = URI.parse(value)
-        next unless uri.is_a?(URI::HTTP) && uri.host
-
-        port = uri.port == uri.default_port ? "" : ":#{uri.port}"
-        "#{uri.scheme.downcase}://#{uri.host}#{port}"
-      rescue URI::InvalidURIError
+        normalize_base_url(value)
+      rescue ArgumentError
         nil
       end.uniq
 

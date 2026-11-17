@@ -28,7 +28,7 @@ module SubstackPdf
       # Turns a slug, URL or URL path into the canonical slug used by the archive.
       def self.normalize_reference(value)
         value.to_s
-             .sub(%r{\A(?:https?://)?[^/\s]+/p/}i, "")
+             .sub(%r{\A(?:https?://)?[^/\s]+/(?:.*/)?p/}i, "")
              .split(/[?#]/)
              .first
              .to_s
