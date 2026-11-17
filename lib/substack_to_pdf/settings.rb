@@ -23,9 +23,13 @@ module SubstackPdf
       order: "asc"
     )
       @only = normalize_list(only).freeze
+      if base_url && base_url.to_s.strip.match?(POST_URL_PATTERN)
+        raise ArgumentError, "publication cannot be a post URL; pass it with --post instead"
+      end
+
       resolved_base_url = base_url || base_url_from_only(@only)
       if resolved_base_url.nil? || resolved_base_url.to_s.strip.empty?
-        raise ArgumentError, "publication is required; pass --publication, a --post URL, or --config"
+        raise ArgumentError, "publication is required; pass --publication, --author, a --post URL, or --config"
       end
 
       @base_url = normalize_base_url(resolved_base_url)
@@ -53,6 +57,9 @@ module SubstackPdf
       raw = value.to_s.strip
       raise ArgumentError, "base URL cannot be empty" if raw.empty?
 
+      raw = raw.sub(/\A@/, "")
+      raise ArgumentError, "base URL cannot be empty" if raw.empty?
+
       unless raw.match?(%r{\Ahttps?://}i)
         if raw.match?(%r{\A[a-z][a-z0-9+.-]*://}i)
           raise ArgumentError, "base URL must use http or https"
@@ -73,9 +80,11 @@ module SubstackPdf
     end
 
     # Substack profile URLs (https://substack.com/@author) point at the
-    # publication subdomain (https://author.substack.com). Every other host,
-    # including custom domains, keeps only its origin. Paths and query strings,
-    # such as /archive, /posts or utm_* parameters, are never part of the base.
+    # publication subdomain (https://author.substack.com). Bare inputs such as
+    # `kaisoku`, `@kaisoku` or `kaisoku/archive` are treated as handles too.
+    # Every other host, including custom domains, keeps only its origin. Paths
+    # and query strings, such as /archive, /posts or utm_* parameters, are never
+    # part of the base.
     def origin_for(uri)
       host = uri.host.to_s.downcase
       port = uri.port == uri.default_port ? "" : ":#{uri.port}"
@@ -83,6 +92,8 @@ module SubstackPdf
       if %w[substack.com www.substack.com].include?(host)
         handle = substack_handle(uri.path)
         host = "#{handle}.substack.com" if handle
+      elsif host != "localhost" && host.match?(SUBSTACK_HANDLE_PATTERN)
+        host = "#{host}.substack.com"
       end
 
       "#{uri.scheme.downcase}://#{host}#{port}"

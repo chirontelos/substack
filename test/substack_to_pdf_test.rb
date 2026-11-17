@@ -732,6 +732,27 @@ class SettingsTest < Minitest::Test
     )
   end
 
+  def test_accepts_bare_handle
+    assert_equal "https://kaisoku.substack.com", settings("kaisoku").base_url
+    assert_equal "kaisoku", settings("kaisoku").author_slug
+  end
+
+  def test_accepts_at_handle
+    assert_equal "https://kaisoku.substack.com", settings("@kaisoku").base_url
+  end
+
+  def test_accepts_handle_with_archive_path
+    assert_equal "https://kaisoku.substack.com", settings("kaisoku/archive").base_url
+  end
+
+  def test_rejects_post_url_as_publication
+    error = assert_raises(ArgumentError) do
+      settings("https://kauanacoimbra.substack.com/p/a-redencao-androgina")
+    end
+
+    assert_match(/--post/, error.message)
+  end
+
   def test_preserves_non_default_port
     assert_equal(
       "http://example.test:8080",
@@ -916,6 +937,67 @@ class CLITest < Minitest::Test
     end
   end
 
+  def test_check_new_all_authors_aliases_scan_author_folders
+    %w[--all-authors --all-publications].each do |flag|
+      Dir.mktmpdir do |dir|
+        _output, error = capture_io do
+          assert_equal 0, cli("--check-new", flag, "--root", dir).run
+        end
+
+        assert_includes error, "No downloaded authors found"
+      end
+    end
+  end
+
+  def test_all_authors_cannot_be_combined_with_publication
+    _output, error = capture_io do
+      assert_equal 1, cli(
+        "--check-new", "--all-authors",
+        "--publication", "https://onlylsc.substack.com"
+      ).run
+    end
+
+    assert_includes error, "cannot be used with --publication"
+  end
+
+  def test_all_authors_cannot_be_combined_with_post_url
+    _output, error = capture_io do
+      assert_equal 1, cli(
+        "--check-new", "--all-authors",
+        "--post", "https://onlylsc.substack.com/p/my-post"
+      ).run
+    end
+
+    assert_includes error, "cannot be used with a --post URL"
+  end
+
+  def test_all_authors_overrides_publication_from_config
+    Dir.mktmpdir do |dir|
+      config = File.join(dir, "config.yml")
+      File.write(config, "publication: https://onlylsc.substack.com\nroot: #{dir}\n")
+
+      _output, error = capture_io do
+        assert_equal 0, cli("--check-new", "--all-authors", "--config", config).run
+      end
+
+      assert_includes error, "No downloaded authors found"
+    end
+  end
+
+  def test_all_authors_warns_when_used_without_check_new
+    Dir.mktmpdir do |dir|
+      _output, error = capture_io do
+        assert_equal 0, cli(
+          "--pdf-only", "--allow-empty", "--root", dir,
+          "--publication", "https://onlylsc.substack.com",
+          "--all-authors"
+        ).run
+      end
+
+      assert_includes error, "--all-authors/--all-publications is ignored"
+    end
+  end
+
   def test_config_supplies_publication_and_root
     Dir.mktmpdir do |dir|
       root = File.join(dir, "out")
@@ -959,6 +1041,30 @@ class CLITest < Minitest::Test
 
       assert Dir.exist?(File.join(dir, "kaisoku"))
     end
+  end
+
+  def test_author_alias_accepts_bare_handle
+    Dir.mktmpdir do |dir|
+      capture_io do
+        assert_equal 0, cli(
+          "--pdf-only", "--allow-empty", "--root", dir,
+          "--author", "kaisoku"
+        ).run
+      end
+
+      assert Dir.exist?(File.join(dir, "kaisoku"))
+    end
+  end
+
+  def test_post_url_is_rejected_as_publication
+    _output, error = capture_io do
+      assert_equal 1, cli(
+        "--list",
+        "--publication", "https://onlylsc.substack.com/p/my-post"
+      ).run
+    end
+
+    assert_includes error, "--post"
   end
 
   def test_missing_config_file_is_a_usage_error

@@ -46,6 +46,10 @@ module SubstackPdf
       reporter = Infrastructure::Reporter.new(quiet: options[:quiet], json: options[:json])
       mode = validate_options!(options, reporter)
 
+      if options[:all_authors] && mode == :check_new && !options[:publication_given]
+        options[:publication] = nil
+      end
+
       if all_authors_check?(options, mode)
         result = check_new_all_authors(options, reporter)
       else
@@ -67,6 +71,8 @@ module SubstackPdf
         config_path: nil,
         root_dir: nil,
         publication: nil,
+        publication_given: false,
+        all_authors: false,
         limit: nil,
         posts: [],
         force: false,
@@ -107,8 +113,14 @@ module SubstackPdf
           options[:root_dir] = value
         end
 
-        parser.on("--publication URL", "Publication homepage, /archive URL or substack.com/@author profile (required unless set by --config, a --post URL, or an all-authors --check-new)") do |value|
+        parser.on("--publication URL", "Author/publication handle, homepage, /archive URL or substack.com/@author profile (required unless set by --config, a --post URL, or an all-authors --check-new)") do |value|
           options[:publication] = value
+          options[:publication_given] = true
+        end
+
+        parser.on("--author URL", "Alias for --publication") do |value|
+          options[:publication] = value
+          options[:publication_given] = true
         end
 
         parser.separator ""
@@ -139,6 +151,17 @@ module SubstackPdf
 
         parser.on("--single-pdf", "Combine saved HTML files into one PDF") do
           options[:single_pdf] = true
+        end
+
+        parser.separator ""
+        parser.separator "All authors (with --check-new):"
+
+        parser.on("--all-authors", "Check every author folder under --root") do
+          options[:all_authors] = true
+        end
+
+        parser.on("--all-publications", "Alias for --all-authors") do
+          options[:all_authors] = true
         end
 
         parser.separator ""
@@ -285,15 +308,26 @@ module SubstackPdf
         raise UsageError, "--name and --path cannot be used together"
       end
 
+      if mode == :check_new && options[:all_authors]
+        if options[:publication_given]
+          raise UsageError, "--all-authors cannot be used with --publication or --author"
+        end
+
+        if options[:posts].any? { |value| value.to_s.strip.match?(Settings::POST_URL_PATTERN) }
+          raise UsageError, "--all-authors cannot be used with a --post URL; use a slug or omit --post"
+        end
+      end
+
       warn_irrelevant_flags(options, mode, reporter)
       mode
     end
 
     # With no --publication, --check-new covers every author folder under the
-    # output root. A full post URL still selects a single publication, matching
-    # the behavior of the other modes.
+    # output root. --all-authors/--all-publications makes that explicit. A full
+    # post URL still selects a single publication, matching the other modes.
     def all_authors_check?(options, mode)
       return false unless mode == :check_new
+      return true if options[:all_authors]
       return false unless options[:publication].to_s.strip.empty?
 
       options[:posts].none? { |value| value.to_s.strip.match?(Settings::POST_URL_PATTERN) }
@@ -329,6 +363,7 @@ module SubstackPdf
       warn_if(reporter, %i[list check_new].include?(mode) && options[:dry_run], "--dry-run", mode)
       warn_if(reporter, mode == :check_new && options[:allow_empty], "--allow-empty", mode)
       warn_if(reporter, %i[list check_new].include?(mode) && options[:force], "--force", mode)
+      warn_if(reporter, mode != :check_new && options[:all_authors], "--all-authors/--all-publications", mode)
     end
 
     def warn_if(reporter, condition, flag, mode)
