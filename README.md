@@ -361,6 +361,7 @@ This separation makes each class independently replaceable and testable, and kee
 ## Troubleshooting
 
 - **`publication is required`**: Pass `--publication`, use a full post URL with `--post`, or set `publication` in a `--config` file.
+- **`bash: --check-new: command not found` or output printed twice**: The URL contains `&` (for example `?utm_source=...&utm_campaign=...`). Unquoted, the shell treats `&` as "run in the background" and everything after it becomes a new command. Quote the URL or drop the query string, since it is not used anyway: `--publication 'https://subscribe.martyrmade.com/?utm_source=...&utm_campaign=...' --check-new`, or simply `--publication https://subscribe.martyrmade.com --check-new`. If a background job is still running, list it with `jobs` and stop it with `kill %1` (or `kill <PID>`).
 - **`archive HTTP 400`**: Confirm that `--publication` points to a valid Substack publication. The archive API rejects unsupported pagination parameters and page sizes above 25.
 - **Browser does not start**: Make sure Chrome/Chromium is installed and that a display is available. On a headless server, run the command through `xvfb-run`.
 - **Unlock keyring prompt**: Chromium is trying to use GNOME Keyring/KWallet to protect its temporary profile. The browser is launched with `--password-store=basic` and `--use-mock-keychain`, which avoid the prompt and are safe for this automation-only profile.
