@@ -80,7 +80,7 @@ bundle exec ruby substack_to_pdf.rb --check-new
 
 Author folders are recognized by their `html/` directory. The folder name is converted back to a publication URL: `kauanacoimbra` becomes `https://kauanacoimbra.substack.com`, and a custom-domain folder such as `subscribe.martyrmade.com` is used as-is. A full post URL passed with `--post` still limits the check to that post's publication. With `--json`, each entry also includes an `author` field.
 
-`--limit` and `--post` also apply to `--check-new`. For export and `--check-new`, `--limit` counts only posts that are not saved yet. A warning is printed so the behavior is explicit.
+`--limit` and `--post` also apply to `--check-new`. For export and `--check-new`, `--limit` counts only posts that are not saved yet. A warning is printed so the behavior is explicit. When `--check-new` scans all authors, `--limit` applies to each author separately, so every publication is still reported.
 
 ## Configuration file
 

@@ -296,7 +296,7 @@ class CheckNewPostsForAllAuthorsTest < Minitest::Test
     end
   end
 
-  def test_limit_applies_across_authors
+  def test_limit_applies_to_each_author
     with_output do |dir|
       archives = {
         "https://kauanacoimbra.substack.com" => [post(1, "one"), post(2, "two")],
@@ -305,9 +305,11 @@ class CheckNewPostsForAllAuthorsTest < Minitest::Test
       libraries = { "kauanacoimbra" => [], "kaisoku" => [] }
       use_case = build_use_case(dir, archives: archives, libraries: libraries, limit: 1)
 
-      _output, error = capture_io { @new_posts = use_case.call }
+      output, error = capture_io { @new_posts = use_case.call }
 
-      assert_equal [3], @new_posts.map(&:id)
+      assert_equal [3, 1], @new_posts.map(&:id)
+      assert_includes output, "kauanacoimbra: 1 new post(s):"
+      assert_includes output, "kaisoku: 1 new post(s):"
       assert_includes error, "--limit 1 counts only posts that are not saved yet"
     end
   end

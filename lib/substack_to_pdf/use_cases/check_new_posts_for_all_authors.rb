@@ -80,13 +80,12 @@ module SubstackPdf
           "Warning: --limit #{@limit} counts only posts that are not saved yet."
         )
 
-        remaining = @limit
-        results.filter_map do |result|
-          next unless remaining.positive?
-
-          posts = result.posts.first(remaining)
-          remaining -= posts.size
-          Result.new(author: result.author, publication_url: result.publication_url, posts: posts)
+        results.map do |result|
+          Result.new(
+            author: result.author,
+            publication_url: result.publication_url,
+            posts: result.posts.first(@limit)
+          )
         end
       end
 
