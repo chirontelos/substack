@@ -53,7 +53,7 @@ module SubstackPdf
 
         @reporter.data("#{posts.size} new post(s):")
         posts.each do |post|
-          @reporter.data("#{post.date_string}  #{post.slug}  #{post.title}")
+          @reporter.data("#{post.date_string}  #{post.slug}")
         end
       end
 

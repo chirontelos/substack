@@ -78,6 +78,33 @@ class PostSelectorTest < Minitest::Test
   end
 end
 
+class ListPostsTest < Minitest::Test
+  FakeListArchive = Struct.new(:posts) do
+    def all_posts
+      posts
+    end
+  end
+
+  def test_prints_only_the_date_and_slug
+    post = SubstackPdf::Domain::Post.new(
+      id: 1,
+      title: "A readable title",
+      subtitle: "",
+      slug: "my-post",
+      canonical_url: "https://example.substack.com/p/my-post",
+      published_at: Time.utc(2026, 1, 2)
+    )
+    use_case = SubstackPdf::UseCases::ListPosts.new(
+      archive: FakeListArchive.new([post]),
+      selector: SubstackPdf::Domain::PostSelector.new
+    )
+
+    output, = capture_io { use_case.call }
+
+    assert_equal "2026-01-02  my-post\n", output
+  end
+end
+
 class CheckNewPostsTest < Minitest::Test
   FakeArchive = Struct.new(:posts) do
     def all_posts
@@ -116,6 +143,8 @@ class CheckNewPostsTest < Minitest::Test
 
     assert_equal [2], @new_posts.map(&:id)
     assert_includes output, "1 new post(s)"
+    assert_includes output, "2026-01-02  post-2"
+    refute_includes output, "Post 2"
   end
 
   def test_limit_counts_only_unsaved_posts

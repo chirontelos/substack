@@ -26,7 +26,7 @@ module SubstackPdf
       def render(posts)
         return JSON.generate(posts.map { |post| serialize(post) }) if @reporter.json?
 
-        posts.map { |post| "#{post.date_string}  #{post.slug}  #{post.title}" }.join("\n")
+        posts.map { |post| "#{post.date_string}  #{post.slug}" }.join("\n")
       end
 
       def serialize(post)
