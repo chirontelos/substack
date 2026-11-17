@@ -136,6 +136,57 @@ class CheckNewPostsTest < Minitest::Test
   end
 end
 
+class ExportPostsTest < Minitest::Test
+  FakeExportArchive = Struct.new(:posts) do
+    def all_posts
+      posts
+    end
+  end
+
+  FakeExportLibrary = Struct.new(:output_dir) do
+    def html_path(post)
+      File.join(output_dir, "#{post.slug}.html")
+    end
+
+    def pdf_path(post)
+      File.join(output_dir, "#{post.slug}.pdf")
+    end
+
+    def exported?(_post, require_pdf: true)
+      true
+    end
+  end
+
+  def post
+    SubstackPdf::Domain::Post.new(
+      id: 1,
+      title: "Post 1",
+      subtitle: "",
+      slug: "post-1",
+      canonical_url: "https://example.substack.com/p/post-1",
+      published_at: Time.utc(2026, 1, 1)
+    )
+  end
+
+  def test_says_when_selected_posts_are_already_saved
+    use_case = SubstackPdf::UseCases::ExportPosts.new(
+      archive: FakeExportArchive.new([post]),
+      library: FakeExportLibrary.new(Dir.tmpdir),
+      scraper: nil,
+      builder_factory: nil,
+      renderer: nil,
+      selector: SubstackPdf::Domain::PostSelector.new(only: ["post-1"]),
+      error_log: nil,
+      pdf: false
+    )
+
+    _output, error = capture_io { assert_empty use_case.call }
+
+    assert_includes error, "already saved"
+    assert_includes error, "--force"
+  end
+end
+
 class HtmlArchiveTest < Minitest::Test
   def with_archive
     Dir.mktmpdir do |dir|

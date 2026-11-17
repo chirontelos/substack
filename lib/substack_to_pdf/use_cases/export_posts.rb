@@ -40,7 +40,14 @@ module SubstackPdf
 
         posts = select_candidates(selection.posts)
         if posts.empty?
-          @reporter.warn "No posts found."
+          if selection.posts.any?
+            @reporter.warn(
+              "All #{selection.posts.size} selected post(s) are already saved. " \
+              "Use --force to export them again."
+            )
+          else
+            @reporter.warn "No posts found."
+          end
           return []
         end
 
