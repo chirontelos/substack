@@ -15,13 +15,18 @@ module SubstackPdf
       end
 
       def call
-        selection = @selector.call(@archive.all_posts, limit: nil)
-        warn_unmatched(selection)
+        posts = new_posts
+        report(posts)
+        posts
+      end
 
-        new_posts = selection.posts.reject { |post| @library.saved?(post) }
-        new_posts = apply_limit(new_posts)
-        report(new_posts)
-        new_posts
+      # Returns the unsaved posts without printing them, so other use cases can
+      # aggregate results for several publications.
+      def new_posts(report_unmatched: true)
+        selection = @selector.call(@archive.all_posts, limit: nil)
+        warn_unmatched(selection) if report_unmatched
+
+        apply_limit(selection.posts.reject { |post| @library.saved?(post) })
       end
 
       private

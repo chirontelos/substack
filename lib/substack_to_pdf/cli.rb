@@ -46,8 +46,13 @@ module SubstackPdf
       reporter = Infrastructure::Reporter.new(quiet: options[:quiet], json: options[:json])
       mode = validate_options!(options, reporter)
 
-      settings = build_settings(options)
-      result = dispatch(mode, options, settings, reporter)
+      if all_authors_check?(options, mode)
+        result = check_new_all_authors(options, reporter)
+      else
+        settings = build_settings(options)
+        result = dispatch(mode, options, settings, reporter)
+      end
+
       exit_code_for(result, options)
     rescue OptionParser::ParseError, UsageError => error
       warn "Error: #{error.message}"
@@ -102,7 +107,7 @@ module SubstackPdf
           options[:root_dir] = value
         end
 
-        parser.on("--publication URL", "Publication homepage or /archive URL (required unless set by --config or a --post URL)") do |value|
+        parser.on("--publication URL", "Publication homepage, /archive URL or substack.com/@author profile (required unless set by --config, a --post URL, or an all-authors --check-new)") do |value|
           options[:publication] = value
         end
 
@@ -124,7 +129,7 @@ module SubstackPdf
           options[:list] = true
         end
 
-        parser.on("--check-new", "List archive posts that have no saved HTML yet and exit") do
+        parser.on("--check-new", "List archive posts that have no saved HTML yet and exit; without --publication, checks every author folder") do
           options[:check_new] = true
         end
 
@@ -282,6 +287,27 @@ module SubstackPdf
 
       warn_irrelevant_flags(options, mode, reporter)
       mode
+    end
+
+    # With no --publication, --check-new covers every author folder under the
+    # output root. A full post URL still selects a single publication, matching
+    # the behavior of the other modes.
+    def all_authors_check?(options, mode)
+      return false unless mode == :check_new
+      return false unless options[:publication].to_s.strip.empty?
+
+      options[:posts].none? { |value| value.to_s.strip.match?(Settings::POST_URL_PATTERN) }
+    end
+
+    def check_new_all_authors(options, reporter)
+      UseCases::CheckNewPostsForAllAuthors.new(
+        root_dir: options[:root_dir],
+        selector: Domain::PostSelector.new(only: options[:posts]),
+        limit: options[:limit],
+        reporter: reporter
+      ).call
+
+      :ok
     end
 
     def selected_mode(options)

@@ -26,6 +26,7 @@ require_relative "substack_to_pdf/infrastructure/reporter"
 require_relative "substack_to_pdf/use_cases/export_posts"
 require_relative "substack_to_pdf/use_cases/list_posts"
 require_relative "substack_to_pdf/use_cases/check_new_posts"
+require_relative "substack_to_pdf/use_cases/check_new_posts_for_all_authors"
 require_relative "substack_to_pdf/use_cases/convert_html_to_pdf"
 require_relative "substack_to_pdf/use_cases/combine_posts_into_pdf"
 

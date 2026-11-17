@@ -68,6 +68,18 @@ bundle exec ruby substack_to_pdf.rb --publication https://onlylsc.substack.com -
 bundle exec ruby substack_to_pdf.rb --publication https://onlylsc.substack.com
 ```
 
+When `--publication` is omitted, `--check-new` checks every author folder that already exists under `--root` (the default `output/`):
+
+```bash
+# only this publication
+bundle exec ruby substack_to_pdf.rb --publication https://fefeobufao.substack.com/ --check-new
+
+# all downloaded authors, such as kauanacoimbra and kaisoku
+bundle exec ruby substack_to_pdf.rb --check-new
+```
+
+Author folders are recognized by their `html/` directory. The folder name is converted back to a publication URL: `kauanacoimbra` becomes `https://kauanacoimbra.substack.com`, and a custom-domain folder such as `subscribe.martyrmade.com` is used as-is. A full post URL passed with `--post` still limits the check to that post's publication. With `--json`, each entry also includes an `author` field.
+
 `--limit` and `--post` also apply to `--check-new`. For export and `--check-new`, `--limit` counts only posts that are not saved yet. A warning is printed so the behavior is explicit.
 
 ## Configuration file
@@ -114,11 +126,11 @@ See `substack_to_pdf.example.yml` for a commented template.
 | --- | --- |
 | `--config FILE` | Load defaults from a YAML configuration file. CLI flags override config values. |
 | `--root DIR` | Root directory for generated files. Default: `./output`. Each author gets a subfolder inside it. |
-| `--publication URL` | Publication to scrape. Accepts the homepage, the `/archive` URL, or a Substack profile URL such as `https://substack.com/@author`, with or without `https://`. Only the scheme, host and port are used, so `/archive`, `/posts` and query strings such as `utm_*` are dropped. Required unless set by `--config` or inferred from a full `--post` URL. |
+| `--publication URL` | Publication to scrape. Accepts the homepage, the `/archive` URL, or a Substack profile URL such as `https://substack.com/@author`, with or without `https://`. Only the scheme, host and port are used, so `/archive`, `/posts` and query strings such as `utm_*` are dropped. Required unless set by `--config`, inferred from a full `--post` URL, or omitted with `--check-new` to scan every downloaded author. |
 | `--post SLUG_OR_URL` | Process only the matching post. Repeat the option or separate values with commas to select several posts. If you pass a full post URL and omit `--publication`, the publication is inferred from that URL. |
 | `--limit N` | Process at most N posts. For export and `--check-new`, only posts that are not saved yet are counted. |
 | `--list` | List the archive posts and exit. |
-| `--check-new` | List archive posts that have no saved HTML yet and exit. |
+| `--check-new` | List archive posts that have no saved HTML yet and exit. Without `--publication`, checks every author folder under `--root`. |
 | `--pdf-only` | Convert HTML files already present in the author's `html/` folder to PDFs, without scraping the archive. |
 | `--single-pdf` | Combine the author's saved HTML files into one PDF. Default: `output/single-pdfs/<author>-all-posts.pdf`. |
 | `--name NAME` | With `--single-pdf`, write to `<root>/single-pdfs/NAME.pdf`. A custom name is not overwritten unless `--force` is used. |
@@ -151,8 +163,9 @@ Flags that do not apply to the selected mode produce a warning and are ignored. 
 --post my-post-slug --post another-post
 ```
 
+A bare slug needs the publication separately:
+
 ```bash
-# Save bothe the the HTML and PDF
 bundle exec ruby substack_to_pdf.rb \
   --publication https://kauanacoimbra.substack.com \
   --post o-sino-que-desperta-a-criacao-formacao

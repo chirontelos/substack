@@ -187,6 +187,113 @@ class ExportPostsTest < Minitest::Test
   end
 end
 
+class CheckNewPostsForAllAuthorsTest < Minitest::Test
+  FakeAllArchive = Struct.new(:posts) do
+    def all_posts
+      posts
+    end
+  end
+
+  FakeAllLibrary = Struct.new(:saved_ids) do
+    def saved?(post)
+      saved_ids.include?(post.id)
+    end
+  end
+
+  def post(id, slug)
+    SubstackPdf::Domain::Post.new(
+      id: id,
+      title: "Post #{id}",
+      subtitle: "",
+      slug: slug,
+      canonical_url: "https://example.substack.com/p/#{slug}",
+      published_at: Time.utc(2026, 1, id)
+    )
+  end
+
+  def with_output
+    Dir.mktmpdir do |dir|
+      %w[kauanacoimbra kaisoku].each do |author|
+        FileUtils.mkdir_p(File.join(dir, author, "html"))
+      end
+      FileUtils.mkdir_p(File.join(dir, "single-pdfs"))
+      yield dir
+    end
+  end
+
+  def build_use_case(root_dir, archives:, libraries:, reporter: SubstackPdf::Infrastructure::Reporter.new, limit: nil)
+    SubstackPdf::UseCases::CheckNewPostsForAllAuthors.new(
+      root_dir: root_dir,
+      selector: SubstackPdf::Domain::PostSelector.new,
+      limit: limit,
+      reporter: reporter,
+      archive_factory: ->(url) { FakeAllArchive.new(archives.fetch(url)) },
+      library_factory: ->(author) { FakeAllLibrary.new(libraries.fetch(author)) }
+    )
+  end
+
+  def test_checks_every_author_folder_under_the_root
+    with_output do |dir|
+      archives = {
+        "https://kauanacoimbra.substack.com" => [post(1, "saved"), post(2, "new")],
+        "https://kaisoku.substack.com" => [post(3, "also-new")]
+      }
+      libraries = { "kauanacoimbra" => [1], "kaisoku" => [] }
+      use_case = build_use_case(dir, archives: archives, libraries: libraries)
+
+      output, = capture_io { @new_posts = use_case.call }
+
+      assert_equal [3, 2], @new_posts.map(&:id)
+      assert_includes output, "kauanacoimbra: 1 new post(s):"
+      assert_includes output, "kaisoku: 1 new post(s):"
+    end
+  end
+
+  def test_json_output_includes_the_author
+    with_output do |dir|
+      archives = {
+        "https://kauanacoimbra.substack.com" => [post(1, "new")],
+        "https://kaisoku.substack.com" => []
+      }
+      libraries = { "kauanacoimbra" => [], "kaisoku" => [] }
+      reporter = SubstackPdf::Infrastructure::Reporter.new(json: true)
+      use_case = build_use_case(dir, archives: archives, libraries: libraries, reporter: reporter)
+
+      output, = capture_io { use_case.call }
+      payload = JSON.parse(output)
+
+      assert_equal ["kauanacoimbra"], payload.map { |entry| entry["author"] }
+      assert_equal ["new"], payload.map { |entry| entry["slug"] }
+    end
+  end
+
+  def test_limit_applies_across_authors
+    with_output do |dir|
+      archives = {
+        "https://kauanacoimbra.substack.com" => [post(1, "one"), post(2, "two")],
+        "https://kaisoku.substack.com" => [post(3, "three")]
+      }
+      libraries = { "kauanacoimbra" => [], "kaisoku" => [] }
+      use_case = build_use_case(dir, archives: archives, libraries: libraries, limit: 1)
+
+      _output, error = capture_io { @new_posts = use_case.call }
+
+      assert_equal [3], @new_posts.map(&:id)
+      assert_includes error, "--limit 1 counts only posts that are not saved yet"
+    end
+  end
+
+  def test_warns_when_no_author_folders_exist
+    Dir.mktmpdir do |dir|
+      use_case = build_use_case(dir, archives: {}, libraries: {})
+
+      _output, error = capture_io { assert_empty use_case.call }
+
+      assert_includes error, "No downloaded authors found"
+    end
+  end
+end
+
 class HtmlArchiveTest < Minitest::Test
   def with_archive
     Dir.mktmpdir do |dir|
@@ -545,6 +652,16 @@ class CLITest < Minitest::Test
       end
 
       assert_includes error, "publication is required"
+    end
+  end
+
+  def test_check_new_without_publication_scans_author_folders
+    Dir.mktmpdir do |dir|
+      _output, error = capture_io do
+        assert_equal 0, cli("--check-new", "--root", dir).run
+      end
+
+      assert_includes error, "No downloaded authors found"
     end
   end
 
