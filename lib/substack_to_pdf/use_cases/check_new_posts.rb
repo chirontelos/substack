@@ -21,23 +21,27 @@ module SubstackPdf
       end
 
       # Returns the unsaved posts without printing them, so other use cases can
-      # aggregate results for several publications.
-      def new_posts(report_unmatched: true)
-        selection = @selector.call(@archive.all_posts, limit: nil)
+      # aggregate results for several publications. The archive is consumed
+      # lazily, so the limit stops page downloads as soon as enough unsaved
+      # posts are found.
+      def new_posts(report_unmatched: true, report_limit: true)
+        selection = @selector.call(
+          @archive.each_post,
+          limit: @limit,
+          filter: ->(post) { !@library.saved?(post) }
+        )
         warn_unmatched(selection) if report_unmatched
+        warn_limit if report_limit && @limit
 
-        apply_limit(selection.posts.reject { |post| @library.saved?(post) })
+        selection.posts
       end
 
       private
 
-      def apply_limit(posts)
-        return posts unless @limit
-
+      def warn_limit
         @reporter.warn(
           "Warning: --limit #{@limit} counts only posts that are not saved yet."
         )
-        posts.first(@limit)
       end
 
       def report(posts)

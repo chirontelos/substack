@@ -82,6 +82,8 @@ Author folders are recognized by their `html/` directory. The folder name is con
 
 `--limit` and `--post` also apply to `--check-new`. For export and `--check-new`, `--limit` counts only posts that are not saved yet. A warning is printed so the behavior is explicit. When `--check-new` scans all authors, `--limit` applies to each author separately, so every publication is still reported.
 
+Archive pages are read lazily. With `--limit`, export, `--list`, and `--check-new` stop fetching archive pages as soon as enough matching posts have been found. If some posts are already saved, fetching continues until the requested number of unsaved posts is reached.
+
 ## Configuration file
 
 `--config FILE` reads defaults from a YAML file. Command-line flags always win over config values.

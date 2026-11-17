@@ -13,7 +13,7 @@ module SubstackPdf
       end
 
       def call
-        selection = @selector.call(@archive.all_posts)
+        selection = @selector.call(@archive.each_post)
         warn_unmatched(selection)
 
         rendered = render(selection.posts)

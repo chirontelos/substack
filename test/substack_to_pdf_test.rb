@@ -49,6 +49,60 @@ class PostTest < Minitest::Test
   end
 end
 
+class ArchiveClientTest < Minitest::Test
+  class StubArchiveClient < SubstackPdf::Infrastructure::ArchiveClient
+    attr_reader :pages_fetched
+
+    def initialize(pages)
+      super(base_url: "https://example.substack.com", user_agent: "test")
+      @pages = pages
+      @pages_fetched = 0
+    end
+
+    private
+
+    def fetch_page(cursor:, offset:, legacy:)
+      @pages_fetched += 1
+      @pages.shift || { "posts" => [], "nextCursor" => nil }
+    end
+  end
+
+  def page(ids, next_cursor)
+    {
+      "posts" => ids.map do |id|
+        {
+          "id" => id,
+          "title" => "Post #{id}",
+          "slug" => "post-#{id}",
+          "canonical_url" => "https://example.substack.com/p/post-#{id}",
+          "post_date" => "2026-01-0#{id}T00:00:00.000Z"
+        }
+      end,
+      "nextCursor" => next_cursor
+    }
+  end
+
+  def test_all_posts_still_reads_every_page
+    client = StubArchiveClient.new([page([1], "next"), page([2], nil)])
+
+    assert_equal [1, 2], client.all_posts.map(&:id)
+    assert_equal 2, client.pages_fetched
+  end
+
+  def test_each_post_stops_fetching_when_the_caller_breaks
+    client = StubArchiveClient.new([page([1], "next"), page([2], nil)])
+    seen = []
+
+    client.each_post do |post|
+      seen << post.id
+      break if seen.size == 1
+    end
+
+    assert_equal [1], seen
+    assert_equal 1, client.pages_fetched
+  end
+end
+
 class PostSelectorTest < Minitest::Test
   def post(id)
     SubstackPdf::Domain::Post.new(
@@ -76,12 +130,68 @@ class PostSelectorTest < Minitest::Test
     assert_equal [1], selection.posts.map(&:id)
     assert_equal ["missing"], selection.unmatched
   end
+
+  def test_stops_consuming_posts_once_the_limit_is_reached
+    posts = [post(1), post(2), post(3)]
+    consumed = []
+    source = Enumerator.new do |yielder|
+      posts.each do |item|
+        consumed << item.id
+        yielder << item
+      end
+    end
+
+    selection = SubstackPdf::Domain::PostSelector.new(limit: 2).call(source)
+
+    assert_equal [1, 2], selection.posts.map(&:id)
+    assert_equal [1, 2], consumed
+  end
+
+  def test_limit_applies_after_the_filter
+    posts = [post(1), post(2), post(3)]
+    consumed = []
+    source = Enumerator.new do |yielder|
+      posts.each do |item|
+        consumed << item.id
+        yielder << item
+      end
+    end
+
+    selection = SubstackPdf::Domain::PostSelector.new(limit: 1).call(
+      source,
+      filter: ->(item) { item.id.even? }
+    )
+
+    assert_equal [2], selection.posts.map(&:id)
+    assert_equal [1, 2], consumed
+  end
+
+  def test_zero_limit_does_not_consume_posts
+    consumed = []
+    source = Enumerator.new do |yielder|
+      [post(1)].each do |item|
+        consumed << item.id
+        yielder << item
+      end
+    end
+
+    selection = SubstackPdf::Domain::PostSelector.new(limit: 0).call(source)
+
+    assert_empty selection.posts
+    assert_empty consumed
+  end
 end
 
 class ListPostsTest < Minitest::Test
   FakeListArchive = Struct.new(:posts) do
     def all_posts
       posts
+    end
+
+    def each_post(&block)
+      return enum_for(:each_post) unless block
+
+      posts.each(&block)
     end
   end
 
@@ -103,12 +213,51 @@ class ListPostsTest < Minitest::Test
 
     assert_equal "2026-01-02  my-post\n", output
   end
+
+  def test_limit_stops_reading_the_archive_early
+    posts = (1..2).map do |id|
+      SubstackPdf::Domain::Post.new(
+        id: id,
+        title: "Post #{id}",
+        subtitle: "",
+        slug: "post-#{id}",
+        canonical_url: "https://example.substack.com/p/post-#{id}",
+        published_at: Time.utc(2026, 1, id)
+      )
+    end
+    consumed = []
+    archive = Object.new
+    archive.define_singleton_method(:each_post) do |&block|
+      return enum_for(:each_post) unless block
+
+      posts.each do |item|
+        consumed << item.id
+        block.call(item)
+      end
+    end
+
+    use_case = SubstackPdf::UseCases::ListPosts.new(
+      archive: archive,
+      selector: SubstackPdf::Domain::PostSelector.new(limit: 1)
+    )
+
+    output, = capture_io { use_case.call }
+
+    assert_equal [1], consumed
+    assert_equal "2026-01-01  post-1\n", output
+  end
 end
 
 class CheckNewPostsTest < Minitest::Test
   FakeArchive = Struct.new(:posts) do
     def all_posts
       posts
+    end
+
+    def each_post(&block)
+      return enum_for(:each_post) unless block
+
+      posts.each(&block)
     end
   end
 
@@ -163,6 +312,32 @@ class CheckNewPostsTest < Minitest::Test
     assert_equal [2], @new_posts.map(&:id)
     assert_includes error, "--limit 1 counts only posts that are not saved yet"
   end
+
+  def test_limit_stops_reading_the_archive_after_enough_unsaved_posts
+    posts = [post(1), post(2), post(3)]
+    consumed = []
+    archive = Object.new
+    archive.define_singleton_method(:each_post) do |&block|
+      return enum_for(:each_post) unless block
+
+      posts.each do |item|
+        consumed << item.id
+        block.call(item)
+      end
+    end
+
+    use_case = SubstackPdf::UseCases::CheckNewPosts.new(
+      archive: archive,
+      library: FakeLibrary.new([1]),
+      selector: SubstackPdf::Domain::PostSelector.new,
+      limit: 1
+    )
+
+    capture_io { @new_posts = use_case.call }
+
+    assert_equal [2], @new_posts.map(&:id)
+    assert_equal [1, 2], consumed
+  end
 end
 
 class ExportPostsTest < Minitest::Test
@@ -170,9 +345,15 @@ class ExportPostsTest < Minitest::Test
     def all_posts
       posts
     end
+
+    def each_post(&block)
+      return enum_for(:each_post) unless block
+
+      posts.each(&block)
+    end
   end
 
-  FakeExportLibrary = Struct.new(:output_dir) do
+  FakeExportLibrary = Struct.new(:output_dir, :exported) do
     def html_path(post)
       File.join(output_dir, "#{post.slug}.html")
     end
@@ -182,25 +363,25 @@ class ExportPostsTest < Minitest::Test
     end
 
     def exported?(_post, require_pdf: true)
-      true
+      !!exported
     end
   end
 
-  def post
+  def post(id = 1)
     SubstackPdf::Domain::Post.new(
-      id: 1,
-      title: "Post 1",
+      id: id,
+      title: "Post #{id}",
       subtitle: "",
-      slug: "post-1",
-      canonical_url: "https://example.substack.com/p/post-1",
-      published_at: Time.utc(2026, 1, 1)
+      slug: "post-#{id}",
+      canonical_url: "https://example.substack.com/p/post-#{id}",
+      published_at: Time.utc(2026, 1, id)
     )
   end
 
   def test_says_when_selected_posts_are_already_saved
     use_case = SubstackPdf::UseCases::ExportPosts.new(
       archive: FakeExportArchive.new([post]),
-      library: FakeExportLibrary.new(Dir.tmpdir),
+      library: FakeExportLibrary.new(Dir.tmpdir, true),
       scraper: nil,
       builder_factory: nil,
       renderer: nil,
@@ -214,12 +395,51 @@ class ExportPostsTest < Minitest::Test
     assert_includes error, "already saved"
     assert_includes error, "--force"
   end
+
+  def test_limit_stops_reading_the_archive_early
+    posts = [post(1), post(2)]
+    consumed = []
+    archive = Object.new
+    archive.define_singleton_method(:each_post) do |&block|
+      return enum_for(:each_post) unless block
+
+      posts.each do |item|
+        consumed << item.id
+        block.call(item)
+      end
+    end
+
+    use_case = SubstackPdf::UseCases::ExportPosts.new(
+      archive: archive,
+      library: FakeExportLibrary.new(Dir.tmpdir, false),
+      scraper: nil,
+      builder_factory: nil,
+      renderer: nil,
+      selector: SubstackPdf::Domain::PostSelector.new,
+      error_log: nil,
+      pdf: false,
+      limit: 1,
+      dry_run: true
+    )
+
+    output, error = capture_io { use_case.call }
+
+    assert_equal [1], consumed
+    assert_includes output, "[1/1] Would export Post 1"
+    assert_includes error, "--limit 1 counts only posts that are not saved yet"
+  end
 end
 
 class CheckNewPostsForAllAuthorsTest < Minitest::Test
   FakeAllArchive = Struct.new(:posts) do
     def all_posts
       posts
+    end
+
+    def each_post(&block)
+      return enum_for(:each_post) unless block
+
+      posts.each(&block)
     end
   end
 

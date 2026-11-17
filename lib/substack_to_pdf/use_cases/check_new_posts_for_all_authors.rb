@@ -34,12 +34,19 @@ module SubstackPdf
           return []
         end
 
-        results = apply_limit(authors.filter_map { |author| check_author(author) })
+        results = authors.filter_map { |author| check_author(author) }
+        warn_limit if @limit
         report(results)
         results.flat_map(&:posts)
       end
 
       private
+
+      def warn_limit
+        @reporter.warn(
+          "Warning: --limit #{@limit} counts only posts that are not saved yet."
+        )
+      end
 
       def author_slugs
         return [] unless Dir.exist?(@root_dir)
@@ -63,30 +70,15 @@ module SubstackPdf
           archive: @archive_factory.call(publication_url),
           library: @library_factory.call(author),
           selector: @selector,
+          limit: @limit,
           reporter: @reporter
         )
 
         Result.new(
           author: author,
           publication_url: publication_url,
-          posts: check.new_posts(report_unmatched: false)
+          posts: check.new_posts(report_unmatched: false, report_limit: false)
         )
-      end
-
-      def apply_limit(results)
-        return results unless @limit
-
-        @reporter.warn(
-          "Warning: --limit #{@limit} counts only posts that are not saved yet."
-        )
-
-        results.map do |result|
-          Result.new(
-            author: result.author,
-            publication_url: result.publication_url,
-            posts: result.posts.first(@limit)
-          )
-        end
       end
 
       def publication_url_for(author)

@@ -35,14 +35,12 @@ module SubstackPdf
       end
 
       def call
-        selection = @selector.call(@archive.all_posts, limit: nil)
-        warn_unmatched(selection)
+        selection = select_candidates
 
-        posts = select_candidates(selection.posts)
-        if posts.empty?
-          if selection.posts.any?
+        if selection.posts.empty?
+          if selection.matched_count.positive?
             @reporter.warn(
-              "All #{selection.posts.size} selected post(s) are already saved. " \
+              "All #{selection.matched_count} selected post(s) are already saved. " \
               "Use --force to export them again."
             )
           else
@@ -51,6 +49,7 @@ module SubstackPdf
           return []
         end
 
+        posts = selection.posts
         @reporter.info "Processing #{posts.size} post(s) into #{@library.output_dir}"
 
         posts.each_with_index do |post, index|
@@ -64,21 +63,25 @@ module SubstackPdf
 
       private
 
-      def select_candidates(posts)
-        candidates = @force ? posts : posts.reject { |post| already_exported?(post) }
-        candidates = apply_limit(candidates)
-        candidates
+      def select_candidates
+        warn_limit
+        selection = @selector.call(
+          @archive.each_post,
+          limit: @limit,
+          filter: @force ? nil : ->(post) { !already_exported?(post) }
+        )
+        warn_unmatched(selection)
+        selection
       end
 
-      def apply_limit(posts)
-        return posts unless @limit
+      def warn_limit
+        return unless @limit
 
         if @force
           @reporter.warn "Warning: --limit #{@limit} counts all selected posts because --force is enabled."
         else
           @reporter.warn "Warning: --limit #{@limit} counts only posts that are not saved yet."
         end
-        posts.first(@limit)
       end
 
       def export_post(post, index, total)

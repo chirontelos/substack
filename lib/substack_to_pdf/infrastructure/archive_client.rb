@@ -22,11 +22,20 @@ module SubstackPdf
       end
 
       def all_posts
-        posts = []
+        each_post.to_a
+      end
+
+      # Yields posts page by page while the archive is still being fetched.
+      # Callers can break out as soon as they have enough results, which avoids
+      # downloading the remaining archive pages.
+      def each_post
+        return enum_for(:each_post) unless block_given?
+
         seen = {}
         cursor = nil
         offset = 0
         legacy = false
+        yielded = 0
 
         loop do
           page = fetch_page(cursor: cursor, offset: offset, legacy: legacy)
@@ -34,7 +43,18 @@ module SubstackPdf
 
           break if batch.empty?
 
-          added = append_unique(posts, seen, batch)
+          added = 0
+
+          batch.each do |data|
+            post = Domain::Post.from_archive(data)
+            next if seen[post.id]
+
+            seen[post.id] = true
+            added += 1
+            yielded += 1
+            yield post
+          end
+
           break if added.zero?
 
           if legacy
@@ -42,13 +62,11 @@ module SubstackPdf
             break if offset > MAX_POSTS
           else
             break if next_cursor.nil? || next_cursor.empty?
-            break if posts.size >= MAX_POSTS
+            break if yielded >= MAX_POSTS
 
             cursor = next_cursor
           end
         end
-
-        posts
       end
 
       private
@@ -58,21 +76,6 @@ module SubstackPdf
 
         data = page.is_a?(Hash) ? page : {}
         [Array(data["posts"]), data["nextCursor"], false]
-      end
-
-      def append_unique(posts, seen, batch)
-        added = 0
-
-        batch.each do |data|
-          post = Domain::Post.from_archive(data)
-          next if seen[post.id]
-
-          seen[post.id] = true
-          posts << post
-          added += 1
-        end
-
-        added
       end
 
       def fetch_page(cursor:, offset:, legacy:)
