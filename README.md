@@ -151,11 +151,18 @@ Flags that do not apply to the selected mode produce a warning and are ignored. 
 --post my-post-slug --post another-post
 ```
 
+```bash
+# Save bothe the the HTML and PDF
+bundle exec ruby substack_to_pdf.rb \
+  --publication https://kauanacoimbra.substack.com \
+  --post o-sino-que-desperta-a-criacao-formacao
+```
+
 When `--post` contains a full post URL, it also selects the publication. This works without `--publication`, and the post is saved under that author's folder:
 
 ```bash
 bundle exec ruby substack_to_pdf.rb \
-  --post https://kauanacoimbra.substack.com/p/a-redencao-androgina \
+  --post https://kauanacoimbra.substack.com/p/o-sino-que-desperta-a-criacao-formacao \
   --html-only
 ```
 
