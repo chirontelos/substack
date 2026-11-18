@@ -11,6 +11,7 @@ module SubstackPdf
         library:,
         scraper:,
         builder_factory:,
+        feed_builder_factory: nil,
         renderer:,
         selector:,
         error_log:,
@@ -24,6 +25,7 @@ module SubstackPdf
         @library = library
         @scraper = scraper
         @builder_factory = builder_factory
+        @feed_builder_factory = feed_builder_factory
         @renderer = renderer
         @selector = selector
         @error_log = error_log
@@ -137,8 +139,12 @@ module SubstackPdf
       end
 
       def build_html(post)
-        scraped_html = @scraper.fetch(post.canonical_url)
-        @builder_factory.call(post).build(post, scraped_html)
+        if post.feed_entry?
+          @feed_builder_factory.call(post).build(post)
+        else
+          scraped_html = @scraper.fetch(post.canonical_url)
+          @builder_factory.call(post).build(post, scraped_html)
+        end
       end
 
       def already_exported?(post)

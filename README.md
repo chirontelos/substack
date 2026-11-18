@@ -1,13 +1,16 @@
 # Substack to PDF
 
-Download the posts of a Substack publication, store a clean offline copy of each article as HTML, and render them as PDFs.
+Download the posts, notes and restacks of a Substack author, store a clean offline copy of each entry as HTML, and render them as PDFs.
 
 The tool was originally written for [onlylsc.substack.com](https://onlylsc.substack.com), but the publication URL can be changed with `--publication` (or its alias `--author`) or a configuration file.
 
 ## Features
 
 - Reads the public Substack archive API and paginates through every post.
-- Detects posts that have not been downloaded yet (`--check-new`).
+- Reads the author's profile activity feed, including accounts that only have notes and no publication posts.
+- Saves notes as HTML/PDF with their text, images and referenced-post cards.
+- Saves restacked posts and notes as link-only entries instead of copying the original content.
+- Detects entries that have not been downloaded yet (`--check-new`).
 - Saves article HTML with remote images embedded as data URIs, so the files work offline.
 - Keeps each publication in its own author folder, with separate HTML and PDF directories.
 - Renders individual PDFs, or one combined PDF containing every saved post.
@@ -56,6 +59,19 @@ bundle exec ruby substack_to_pdf.rb --config substack_to_pdf.yml
 ```
 
 By default everything is written under the `output/` directory next to the script, grouped by author. For example, `onlylsc.substack.com` goes to `output/onlylsc/`, and `kauanacoimbra.substack.com` goes to `output/kauanacoimbra/`.
+
+## Posts, notes and restacks
+
+For Substack-hosted authors, the tool combines the publication archive with the author's profile activity feed. This means accounts without a normal publication, such as `https://substack.com/@kaisoku`, still work: their notes are downloaded as individual HTML/PDF files.
+
+```bash
+bundle exec ruby substack_to_pdf.rb --publication https://substack.com/@kaisoku
+bundle exec ruby substack_to_pdf.rb --post https://substack.com/@kaisoku/note/c-367417090
+```
+
+Notes include their text, images, and any referenced post as a clickable card. Restacked posts and notes are saved as a short entry that links to the original, instead of copying the whole original into the PDF.
+
+Activities are merged chronologically with regular posts, so `--limit` applies to the newest entries across both sources. Only Substack-hosted authors (`*.substack.com`) have a readable profile feed; custom-domain publications continue to use their publication archive.
 
 ## How "new posts" are detected
 
@@ -132,9 +148,9 @@ See `substack_to_pdf.example.yml` for a commented template.
 | --- | --- |
 | `--config FILE` | Load defaults from a YAML configuration file. CLI flags override config values. |
 | `--root DIR` | Root directory for generated files. Default: `./output`. Each author gets a subfolder inside it. |
-| `--publication URL` | Author/publication to scrape. Accepts a bare handle (`kaisoku`), `@kaisoku`, the homepage, the `/archive` URL, a Substack profile URL such as `https://substack.com/@author`, or a custom domain, with or without `https://`. Only the scheme, host and port are used, so `/archive`, `/posts` and query strings such as `utm_*` are dropped. A full `/p/` post URL is rejected; pass it with `--post` instead. Required unless set by `--config`, inferred from a full `--post` URL, or omitted with `--check-new` to scan every downloaded author. |
+| `--publication URL` | Author/publication to scrape. Accepts a bare handle (`kaisoku`), `@kaisoku`, the homepage, the `/archive` URL, a Substack profile URL such as `https://substack.com/@author`, or a custom domain, with or without `https://`. Only the scheme, host and port are used, so `/archive`, `/posts` and query strings such as `utm_*` are dropped. A full `/p/` post URL or `/note/` URL is rejected; pass it with `--post` instead. Required unless set by `--config`, inferred from a full `--post` URL, or omitted with `--check-new` to scan every downloaded author. |
 | `--author URL` | Alias for `--publication`. |
-| `--post SLUG_OR_URL` | Process only the matching post. Repeat the option or separate values with commas to select several posts. If you pass a full post URL and omit `--publication`/`--author`, the publication is inferred from that URL. |
+| `--post SLUG_OR_URL` | Process only the matching post or note. Repeat the option or separate values with commas to select several entries. Accepts post URLs, note URLs such as `https://substack.com/@author/note/c-123`, and note IDs such as `c-123`. If you pass a full post or note URL and omit `--publication`/`--author`, the author is inferred from that URL. |
 | `--limit N` | Process at most N posts. For export and `--check-new`, only posts that are not saved yet are counted. |
 | `--list` | List the archive posts and exit. |
 | `--check-new` | List archive posts that have no saved HTML yet and exit. Without `--publication`, checks every author folder under `--root`. |
@@ -205,7 +221,7 @@ bundle exec ruby substack_to_pdf.rb --publication @kaisoku
 bundle exec ruby substack_to_pdf.rb --author kaisoku
 ```
 
-A full `/p/` post URL must be passed with `--post`. Passing it to `--publication` or `--author` is an error instead of silently exporting the whole archive.
+A full `/p/` post URL or `/note/` URL must be passed with `--post`. Passing it to `--publication` or `--author` is an error instead of silently exporting the whole archive.
 
 This also applies to `--post` URLs like `https://substack.com/@kaisoku/p/my-post-slug`. Query strings and extra path segments are dropped from regular publication URLs too, so `https://subscribe.martyrmade.com/?utm_source=newsletter` becomes `https://subscribe.martyrmade.com`.
 
@@ -400,7 +416,7 @@ This separation makes each class independently replaceable and testable, and kee
 ## Troubleshooting
 
 - **`publication is required`**: Pass `--publication`/`--author`, use a full post URL with `--post`, or set `publication` in a `--config` file.
-- **`publication cannot be a post URL`**: You passed a `/p/...` post URL to `--publication` or `--author`. Use `--post` for a specific post URL; passing it to the publication flag would otherwise select the whole archive.
+- **`publication cannot be a post or note URL`**: You passed a `/p/...` post URL or `/note/...` URL to `--publication` or `--author`. Use `--post` for a specific post or note URL; passing it to the publication flag would otherwise select the whole archive/feed.
 - **`bash: --check-new: command not found` or output printed twice**: The URL contains `&` (for example `?utm_source=...&utm_campaign=...`). Unquoted, the shell treats `&` as "run in the background" and everything after it becomes a new command. Quote the URL or drop the query string, since it is not used anyway: `--publication 'https://subscribe.martyrmade.com/?utm_source=...&utm_campaign=...' --check-new`, or simply `--publication https://subscribe.martyrmade.com --check-new`. If a background job is still running, list it with `jobs` and stop it with `kill %1` (or `kill <PID>`).
 - **`archive HTTP 400`**: Confirm that `--publication` points to a valid Substack publication. The archive API rejects unsupported pagination parameters and page sizes above 25.
 - **Browser does not start**: Make sure Chrome/Chromium is installed and that a display is available. On a headless server, run the command through `xvfb-run`.

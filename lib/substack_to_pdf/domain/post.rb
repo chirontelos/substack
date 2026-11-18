@@ -6,7 +6,10 @@ module SubstackPdf
   module Domain
     # A single publication post, independent of how it was obtained.
     class Post
-      attr_reader :id, :title, :subtitle, :slug, :canonical_url, :published_at
+      NOTE_REFERENCE_PATTERN = %r{\A(?:https?://)?[^/\s]+/(?:.*/)?note/([^/?#]+)}i
+
+      attr_reader :id, :title, :subtitle, :slug, :canonical_url, :published_at,
+                  :kind, :payload
 
       def self.from_archive(data)
         new(
@@ -27,21 +30,54 @@ module SubstackPdf
 
       # Turns a slug, URL or URL path into the canonical slug used by the archive.
       def self.normalize_reference(value)
-        value.to_s
-             .sub(%r{\A(?:https?://)?[^/\s]+/(?:.*/)?p/}i, "")
-             .split(/[?#]/)
-             .first
-             .to_s
-             .sub(%r{/+\z}, "")
+        raw = value.to_s
+        note = raw.match(NOTE_REFERENCE_PATTERN)
+        return note[1] if note
+
+        raw.sub(%r{\A(?:https?://)?[^/\s]+/(?:.*/)?p/}i, "")
+           .split(/[?#]/)
+           .first
+           .to_s
+           .sub(%r{/+\z}, "")
       end
 
-      def initialize(id:, title:, subtitle:, slug:, canonical_url:, published_at:)
+      def initialize(
+        id:,
+        title:,
+        subtitle:,
+        slug:,
+        canonical_url:,
+        published_at:,
+        kind: :post,
+        payload: nil
+      )
         @id = id
         @title = title.to_s
         @subtitle = subtitle.to_s
         @slug = slug.to_s
         @canonical_url = canonical_url.to_s
         @published_at = published_at
+        @kind = kind
+        @payload = payload
+      end
+
+      def note?
+        kind == :note
+      end
+
+      def restack?
+        kind == :restack
+      end
+
+      # Notes and restacks are rendered from the feed payload instead of being
+      # scraped from an article page.
+      def feed_entry?
+        kind != :post
+      end
+
+      def dedupe_key
+        value = canonical_url.to_s
+        value.empty? ? "#{kind}:#{id}" : value
       end
 
       def display_title

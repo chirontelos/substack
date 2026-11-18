@@ -126,7 +126,7 @@ module SubstackPdf
         parser.separator ""
         parser.separator "Selection:"
 
-        parser.on("--post SLUG_OR_URL", "Process only the matching post; repeat or use commas. A post URL also selects its publication") do |value|
+        parser.on("--post SLUG_OR_URL", "Process only the matching post or note; repeat or use commas. A post/note URL also selects its author") do |value|
           options[:posts] << value
         end
 
@@ -313,7 +313,7 @@ module SubstackPdf
           raise UsageError, "--all-authors cannot be used with --publication or --author"
         end
 
-        if options[:posts].any? { |value| value.to_s.strip.match?(Settings::POST_URL_PATTERN) }
+        if options[:posts].any? { |value| value.to_s.strip.match?(Settings::SOURCE_URL_PATTERN) }
           raise UsageError, "--all-authors cannot be used with a --post URL; use a slug or omit --post"
         end
       end
@@ -330,7 +330,7 @@ module SubstackPdf
       return true if options[:all_authors]
       return false unless options[:publication].to_s.strip.empty?
 
-      options[:posts].none? { |value| value.to_s.strip.match?(Settings::POST_URL_PATTERN) }
+      options[:posts].none? { |value| value.to_s.strip.match?(Settings::SOURCE_URL_PATTERN) }
     end
 
     def check_new_all_authors(options, reporter)
@@ -421,15 +421,29 @@ module SubstackPdf
     end
 
     def build_archive(settings)
-      Infrastructure::ArchiveClient.new(
-        base_url: settings.base_url,
-        user_agent: Infrastructure::StealthBrowser::REAL_USER_AGENT
-      )
+      archives = [
+        Infrastructure::ArchiveClient.new(
+          base_url: settings.base_url,
+          user_agent: Infrastructure::StealthBrowser::REAL_USER_AGENT
+        )
+      ]
+
+      if settings.profile_handle
+        archives << Infrastructure::ProfileClient.new(
+          handle: settings.profile_handle,
+          user_agent: Infrastructure::StealthBrowser::REAL_USER_AGENT
+        )
+      end
+
+      return archives.first if archives.size == 1
+
+      Infrastructure::CombinedArchive.new(archives)
     end
 
     def export_posts(options, settings, library, archive, selector, error_log, reporter)
       scraper = nil
       builder_factory = nil
+      feed_builder_factory = nil
 
       unless options[:dry_run]
         media_cache = Infrastructure::MediaCache.new(
@@ -440,6 +454,9 @@ module SubstackPdf
         builder_factory = lambda do |post|
           Infrastructure::ArticleBuilder.new(media_cache, base_url: post.canonical_url)
         end
+        feed_builder_factory = lambda do |post|
+          Infrastructure::FeedEntryBuilder.new(media_cache, base_url: post.canonical_url)
+        end
         scraper = Infrastructure::ArticleScraper.new
       end
 
@@ -448,6 +465,7 @@ module SubstackPdf
         library: library,
         scraper: scraper,
         builder_factory: builder_factory,
+        feed_builder_factory: feed_builder_factory,
         renderer: Infrastructure::PdfRenderer.new,
         selector: selector,
         error_log: error_log,

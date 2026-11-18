@@ -69,6 +69,101 @@ class FileSizeTest < Minitest::Test
   end
 end
 
+class FeedEntryBuilderTest < Minitest::Test
+  FakeMediaCache = Struct.new(:data) do
+    def data_uri(_source, quiet: false)
+      data
+    end
+  end
+
+  def builder
+    SubstackPdf::Infrastructure::FeedEntryBuilder.new(
+      FakeMediaCache.new("data:image/png;base64,AAA"),
+      base_url: "https://substack.com/@kaisoku"
+    )
+  end
+
+  def note
+    SubstackPdf::Domain::Post.new(
+      id: 10,
+      title: "A note title",
+      subtitle: "",
+      slug: "c-10",
+      canonical_url: "https://substack.com/@kaisoku/note/c-10",
+      published_at: Time.utc(2026, 1, 1),
+      kind: :note,
+      payload: {
+        "comment" => {
+          "name" => "Kaisoku",
+          "body" => "A note title\n\nBody text",
+          "body_json" => {
+            "type" => "doc",
+            "content" => [
+              {
+                "type" => "paragraph",
+                "content" => [
+                  { "type" => "text", "text" => "Body ", "marks" => [] },
+                  { "type" => "text", "text" => "bold", "marks" => [{ "type" => "bold" }] }
+                ]
+              }
+            ]
+          },
+          "attachments" => [
+            {
+              "type" => "post",
+              "post" => {
+                "title" => "Referenced post",
+                "subtitle" => "Referenced subtitle",
+                "canonical_url" => "https://example.substack.com/p/referenced",
+                "cover_image" => "https://example.substack.com/cover.jpg"
+              },
+              "publication" => { "name" => "Example" }
+            }
+          ]
+        }
+      }
+    )
+  end
+
+  def restack
+    SubstackPdf::Domain::Post.new(
+      id: 20,
+      title: "Original post",
+      subtitle: "Original subtitle",
+      slug: "original-post",
+      canonical_url: "https://example.substack.com/p/original-post",
+      published_at: Time.utc(2026, 1, 2),
+      kind: :restack,
+      payload: {
+        "post" => {
+          "title" => "Original post",
+          "subtitle" => "Original subtitle",
+          "canonical_url" => "https://example.substack.com/p/original-post",
+          "cover_image" => "https://example.substack.com/cover.jpg"
+        },
+        "publication" => { "name" => "Example" }
+      }
+    )
+  end
+
+  def test_renders_note_body_and_referenced_post_card
+    output = builder.build(note)
+
+    assert_includes output, "<p>Body <strong>bold</strong></p>"
+    assert_includes output, "https://example.substack.com/p/referenced"
+    assert_includes output, "Referenced post"
+    assert_includes output, "Referenced subtitle"
+  end
+
+  def test_restack_links_the_original_post_without_its_body
+    output = builder.build(restack)
+
+    assert_includes output, "https://example.substack.com/p/original-post"
+    assert_includes output, "Open original post"
+    refute_includes output, "Body text"
+  end
+end
+
 class ArticleBuilderTest < Minitest::Test
   FakeMediaCache = Struct.new(:data) do
     def data_uri(_source, quiet: false)
@@ -181,6 +276,119 @@ class ArchiveClientTest < Minitest::Test
 
     assert_equal [1], seen
     assert_equal 1, client.pages_fetched
+  end
+end
+
+class ProfileClientTest < Minitest::Test
+  class StubProfileClient < SubstackPdf::Infrastructure::ProfileClient
+    attr_reader :pages_fetched
+
+    def initialize(pages)
+      super(handle: "kaisoku", user_agent: "test")
+      @pages = pages
+      @pages_fetched = 0
+    end
+
+    private
+
+    def profile_id
+      123
+    end
+
+    def fetch_page(_cursor)
+      @pages_fetched += 1
+      @pages.shift || {}
+    end
+  end
+
+  def post_data(id)
+    {
+      "id" => id,
+      "title" => "Post #{id}",
+      "subtitle" => "Subtitle #{id}",
+      "slug" => "post-#{id}",
+      "canonical_url" => "https://example.substack.com/p/post-#{id}",
+      "post_date" => "2026-01-0#{id}T00:00:00.000Z"
+    }
+  end
+
+  def note_item(id, date: "2026-01-01T00:00:00.000Z", context: "note", handle: "kaisoku")
+    {
+      "entity_key" => "c-#{id}",
+      "type" => "comment",
+      "context" => { "type" => context, "timestamp" => date },
+      "comment" => {
+        "id" => id,
+        "name" => "Kaisoku",
+        "handle" => handle,
+        "body" => "First line\n\nSecond paragraph",
+        "date" => date,
+        "attachments" => []
+      }
+    }
+  end
+
+  def test_maps_notes_and_restacks_to_posts
+    page = {
+      "items" => [
+        note_item(10, context: "note"),
+        note_item(11, context: "comment_restack", handle: "other"),
+        {
+          "entity_key" => "p-12",
+          "type" => "post",
+          "context" => { "type" => "post_restack", "timestamp" => "2026-01-02T00:00:00.000Z" },
+          "post" => post_data(2),
+          "publication" => { "name" => "Example" }
+        }
+      ],
+      "nextCursor" => nil
+    }
+
+    posts = StubProfileClient.new([page]).all_posts
+
+    assert_equal %i[note restack restack], posts.map(&:kind)
+    assert_equal ["First line", "Restacked note by Kaisoku", "Post 2"], posts.map(&:title)
+    assert_equal "https://substack.com/@kaisoku/note/c-10", posts[0].canonical_url
+    assert_equal "https://substack.com/@other/note/c-11", posts[1].canonical_url
+    assert_equal "https://example.substack.com/p/post-2", posts[2].canonical_url
+  end
+
+  def test_follows_feed_cursor_until_exhausted
+    first = { "items" => [note_item(1)], "nextCursor" => "next" }
+    second = { "items" => [note_item(2)], "nextCursor" => nil }
+    client = StubProfileClient.new([first, second])
+
+    assert_equal [1, 2], client.all_posts.map(&:id)
+    assert_equal 2, client.pages_fetched
+  end
+end
+
+class CombinedArchiveTest < Minitest::Test
+  FakeStreamArchive = Struct.new(:posts) do
+    def each_post(&block)
+      return enum_for(:each_post) unless block
+
+      posts.each(&block)
+    end
+  end
+
+  def post(id, date)
+    SubstackPdf::Domain::Post.new(
+      id: id,
+      title: "Post #{id}",
+      subtitle: "",
+      slug: "post-#{id}",
+      canonical_url: "https://example.substack.com/p/post-#{id}",
+      published_at: Time.utc(2026, 1, date)
+    )
+  end
+
+  def test_merges_archives_by_date_and_removes_duplicates
+    archive = FakeStreamArchive.new([post(1, 3), post(2, 1)])
+    profile = FakeStreamArchive.new([post(3, 4), post(2, 1)])
+    combined = SubstackPdf::Infrastructure::CombinedArchive.new([archive, profile])
+
+    assert_equal [3, 1, 2], combined.each_post.map(&:id)
   end
 end
 
@@ -890,6 +1098,43 @@ class SettingsTest < Minitest::Test
     )
 
     assert_equal "https://onlylsc.substack.com", settings.base_url
+  end
+
+  def test_derives_profile_handle_for_substack_publications
+    settings = SubstackPdf::Settings.new(
+      output_dir: Dir.tmpdir,
+      base_url: "https://substack.com/@kaisoku"
+    )
+
+    assert_equal "kaisoku", settings.profile_handle
+  end
+
+  def test_custom_domains_have_no_profile_handle
+    settings = SubstackPdf::Settings.new(
+      output_dir: Dir.tmpdir,
+      base_url: "https://subscribe.martyrmade.com"
+    )
+
+    assert_nil settings.profile_handle
+  end
+
+  def test_infers_publication_from_note_url_in_only
+    settings = SubstackPdf::Settings.new(
+      output_dir: Dir.tmpdir,
+      only: ["https://substack.com/@kaisoku/note/c-367417090"]
+    )
+
+    assert_equal "https://kaisoku.substack.com", settings.base_url
+    assert_equal "kaisoku", settings.author_slug
+    assert_equal "kaisoku", settings.profile_handle
+  end
+
+  def test_rejects_note_url_as_publication
+    error = assert_raises(ArgumentError) do
+      settings("https://substack.com/@kaisoku/note/c-367417090")
+    end
+
+    assert_match(/--post/, error.message)
   end
 
   def test_rejects_post_urls_from_multiple_publications

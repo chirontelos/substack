@@ -7,10 +7,12 @@ module SubstackPdf
   class Settings
     ORDERS = %w[asc desc].freeze
     POST_URL_PATTERN = %r{\A(?:https?://)?[^/\s]+/(?:.*/)?p/}i
+    SOURCE_URL_PATTERN = %r{\A(?:https?://)?[^/\s]+/(?:.*/)?(?:p|note)/}i
     SUBSTACK_PROFILE_PATTERN = %r{\A/@([^/]+)}i
     SUBSTACK_HANDLE_PATTERN = /\A[a-z0-9][a-z0-9_-]*\z/i
 
-    attr_reader :base_url, :author_slug, :output_dir, :limit, :only, :force, :first, :order
+    attr_reader :base_url, :author_slug, :output_dir, :limit, :only, :force, :first,
+                :order, :profile_handle
 
     def initialize(
       output_dir:,
@@ -23,8 +25,8 @@ module SubstackPdf
       order: "asc"
     )
       @only = normalize_list(only).freeze
-      if base_url && base_url.to_s.strip.match?(POST_URL_PATTERN)
-        raise ArgumentError, "publication cannot be a post URL; pass it with --post instead"
+      if base_url && base_url.to_s.strip.match?(SOURCE_URL_PATTERN)
+        raise ArgumentError, "publication cannot be a post or note URL; pass it with --post instead"
       end
 
       resolved_base_url = base_url || base_url_from_only(@only)
@@ -34,6 +36,7 @@ module SubstackPdf
 
       @base_url = normalize_base_url(resolved_base_url)
       @author_slug = derive_author_slug(@base_url)
+      @profile_handle = self.class.profile_handle_for(@base_url)
       @output_dir = File.expand_path(output_dir)
       @limit = validate_limit(limit)
       @force = !!force
@@ -49,6 +52,20 @@ module SubstackPdf
 
     def force?
       @force
+    end
+
+    # Substack-hosted authors expose a reader activity feed (posts, notes,
+    # restacks) at their <handle>.substack.com publication. Custom domains have
+    # no reliable profile handle, so only Substack subdomains qualify.
+    def self.profile_handle_for(url)
+      host = URI.parse(url).host.to_s.downcase
+      return nil unless host.end_with?(".substack.com")
+      return nil if %w[substack.com www.substack.com].include?(host)
+
+      handle = host.delete_suffix(".substack.com")
+      handle.match?(SUBSTACK_HANDLE_PATTERN) ? handle : nil
+    rescue URI::InvalidURIError
+      nil
     end
 
     private
@@ -113,7 +130,7 @@ module SubstackPdf
     def base_url_from_only(references)
       origins = references.filter_map do |reference|
         value = reference.to_s.strip
-        next unless value.match?(POST_URL_PATTERN)
+        next unless value.match?(SOURCE_URL_PATTERN)
 
         value = "https://#{value}" unless value.match?(%r{\Ahttps?://}i)
         normalize_base_url(value)

@@ -89,10 +89,24 @@ module SubstackPdf
       end
 
       def build_archive(publication_url)
-        Infrastructure::ArchiveClient.new(
-          base_url: publication_url,
-          user_agent: Infrastructure::StealthBrowser::REAL_USER_AGENT
-        )
+        archives = [
+          Infrastructure::ArchiveClient.new(
+            base_url: publication_url,
+            user_agent: Infrastructure::StealthBrowser::REAL_USER_AGENT
+          )
+        ]
+
+        handle = Settings.profile_handle_for(publication_url)
+        if handle
+          archives << Infrastructure::ProfileClient.new(
+            handle: handle,
+            user_agent: Infrastructure::StealthBrowser::REAL_USER_AGENT
+          )
+        end
+
+        return archives.first if archives.size == 1
+
+        Infrastructure::CombinedArchive.new(archives)
       end
 
       def build_library(author)
