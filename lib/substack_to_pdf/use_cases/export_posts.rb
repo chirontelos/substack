@@ -112,9 +112,9 @@ module SubstackPdf
               title: post.display_title,
               subject: post.subtitle
             )
-            @reporter.info "  saved #{File.basename(pdf_path)} (#{File.size(pdf_path)} bytes)"
+            @reporter.info "  saved #{File.basename(pdf_path)} (#{Infrastructure::FileSize.format(pdf_path)})"
           else
-            @reporter.info "  saved #{File.basename(html_path)} (#{File.size(html_path)} bytes)"
+            @reporter.info "  saved #{File.basename(html_path)} (#{Infrastructure::FileSize.format(html_path)})"
           end
         rescue StandardError => error
           @error_log.record(post, error)

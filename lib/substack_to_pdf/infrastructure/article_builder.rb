@@ -28,6 +28,11 @@ module SubstackPdf
         ".paywall",
         ".paywall-cta",
         ".post-ufi",
+        ".install-substack-app-embed",
+        ".install-substack-app-embed-img",
+        ".install-substack-app-embed-text",
+        ".install-substack-app-embed-link",
+        ".install-substack-app-embed-btn",
         "[data-component-name='SubscribeWidgetToDOM']"
       ].join(",")
 

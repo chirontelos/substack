@@ -22,6 +22,7 @@ require_relative "substack_to_pdf/infrastructure/pdf_renderer"
 require_relative "substack_to_pdf/infrastructure/error_log"
 require_relative "substack_to_pdf/infrastructure/post_library"
 require_relative "substack_to_pdf/infrastructure/reporter"
+require_relative "substack_to_pdf/infrastructure/file_size"
 
 require_relative "substack_to_pdf/use_cases/export_posts"
 require_relative "substack_to_pdf/use_cases/list_posts"

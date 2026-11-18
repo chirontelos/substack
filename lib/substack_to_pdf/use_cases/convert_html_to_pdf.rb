@@ -71,7 +71,7 @@ module SubstackPdf
           title = basename if title.nil? || title.empty?
 
           @renderer.render(html, pdf_path, title: title, subject: document.subtitle)
-          @reporter.info "  saved #{File.basename(pdf_path)} (#{File.size(pdf_path)} bytes)"
+          @reporter.info "  saved #{File.basename(pdf_path)} (#{Infrastructure::FileSize.format(pdf_path)})"
         rescue StandardError => error
           @error_log.record(html_path, error)
           @reporter.warn "  failed: #{error.class}: #{error.message}"

@@ -49,6 +49,87 @@ class PostTest < Minitest::Test
   end
 end
 
+class FileSizeTest < Minitest::Test
+  def test_formats_bytes_as_megabytes
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, "file.pdf")
+      File.binwrite(path, "x" * (1_048_576 + 524_288))
+
+      assert_equal "1.50 MB", SubstackPdf::Infrastructure::FileSize.format(path)
+    end
+  end
+
+  def test_formats_small_files_with_two_decimals
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, "file.html")
+      File.binwrite(path, "x" * 10_240)
+
+      assert_equal "0.01 MB", SubstackPdf::Infrastructure::FileSize.format(path)
+    end
+  end
+end
+
+class ArticleBuilderTest < Minitest::Test
+  FakeMediaCache = Struct.new(:data) do
+    def data_uri(_source, quiet: false)
+      data
+    end
+  end
+
+  def build_html(body)
+    <<~HTML
+      <html>
+        <body>
+          <article>
+            <h1 class="post-title">Post title</h1>
+            <div class="body markup">#{body}</div>
+          </article>
+        </body>
+      </html>
+    HTML
+  end
+
+  def post
+    SubstackPdf::Domain::Post.new(
+      id: 1,
+      title: "Post title",
+      subtitle: "",
+      slug: "post-1",
+      canonical_url: "https://example.substack.com/p/post-1",
+      published_at: Time.utc(2026, 1, 1)
+    )
+  end
+
+  def test_removes_install_app_embed
+    html = build_html(<<~HTML)
+      <p>Before</p>
+      <div class="install-substack-app-embed install-substack-app-embed-web">
+        <img class="install-substack-app-embed-img" src="https://substackcdn.com/app.png">
+        <div class="install-substack-app-embed-text">
+          <div class="install-substack-app-header">Get more from the author in the Substack app</div>
+          <div class="install-substack-app-text">Available for iOS and Android</div>
+        </div>
+        <a class="install-substack-app-embed-link" href="https://substack.com/app">Get the app</a>
+      </div>
+      <p>After</p>
+    HTML
+
+    builder = SubstackPdf::Infrastructure::ArticleBuilder.new(
+      FakeMediaCache.new(nil),
+      base_url: "https://example.substack.com"
+    )
+
+    output = builder.build(post, html)
+
+    assert_includes output, "<p>Before</p>"
+    assert_includes output, "<p>After</p>"
+    refute_includes output, "install-substack-app"
+    refute_includes output, "Get more from the author"
+    refute_includes output, "Available for iOS and Android"
+    refute_includes output, "Get the app"
+  end
+end
+
 class ArchiveClientTest < Minitest::Test
   class StubArchiveClient < SubstackPdf::Infrastructure::ArchiveClient
     attr_reader :pages_fetched

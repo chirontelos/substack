@@ -79,7 +79,7 @@ module SubstackPdf
           fonts: liberation_fonts
         )
 
-        @reporter.info "  saved #{File.basename(output_path)} (#{File.size(output_path)} bytes)"
+        @reporter.info "  saved #{File.basename(output_path)} (#{Infrastructure::FileSize.format(output_path)})"
         output_path
       rescue StandardError => error
         @error_log.record("single PDF", error)
